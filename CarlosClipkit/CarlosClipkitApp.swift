@@ -181,6 +181,7 @@ class AppState: ObservableObject {
     @Published var scenesDetected: Bool = false
     @Published var isDetectingScenes: Bool = false
     @Published var detectionProgress: Double = 0
+    @Published var detectionStatusMessage: String = ""
     @Published var detectionThreshold: Double = 0.35
     var sceneDetectionTask: Task<Void, Never>?
 
@@ -306,7 +307,7 @@ class AppState: ObservableObject {
     }
 
     /// Incrementally adjust still positions to match a new count.
-    /// - If newCount > current: generate additional timestamps in under-represented scenes and append
+    /// - If newCount > current: insert new positions at the midpoint of the largest gaps (never re-rolls existing)
     /// - If newCount < current: remove positions closest to another remaining position
     /// - If equal: no-op
     func adjustStillPositions(to newCount: Int, scenes: [(start: Double, end: Double)]) {
@@ -315,8 +316,29 @@ class AppState: ObservableObject {
         guard newCount != currentCount else { return }
 
         if newCount > currentCount {
-            // Regenerate ALL positions based on current placement strategy
-            initializeStillPositions(from: scenes, count: newCount)
+            // Add new positions in the largest gaps — existing markers stay in place
+            var positions = stillPositions
+            let addCount = newCount - currentCount
+
+            for _ in 0..<addCount {
+                let boundaries = [0.0] + positions + [videoDuration]
+                var largestGapStart = 0.0
+                var largestGapSize = 0.0
+
+                for i in 0..<(boundaries.count - 1) {
+                    let gapSize = boundaries[i + 1] - boundaries[i]
+                    if gapSize > largestGapSize {
+                        largestGapSize = gapSize
+                        largestGapStart = boundaries[i]
+                    }
+                }
+
+                let newPosition = largestGapStart + largestGapSize / 2
+                positions.append(newPosition)
+                positions.sort()
+            }
+
+            stillPositions = positions
         } else {
             // Remove excess positions — drop those closest to another remaining position
             var positions = stillPositions

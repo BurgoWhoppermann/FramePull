@@ -109,12 +109,18 @@ struct ContentView: View {
 
                 refinementTask?.cancel()
                 appState.isDetectingScenes = true
+                appState.detectionStatusMessage = ""
                 refinementTask = Task {
                     let refined = await videoProcessor.refineTimestamps(
                         from: url,
                         timestamps: newPositions,
                         videoDuration: appState.videoDuration,
-                        progress: { _, _ in }
+                        progress: { fraction, message in
+                            Task { @MainActor in
+                                appState.detectionProgress = fraction
+                                appState.detectionStatusMessage = message
+                            }
+                        }
                     )
                     guard !Task.isCancelled else { return }
                     await MainActor.run {
@@ -123,6 +129,7 @@ struct ContentView: View {
                         positions.append(contentsOf: refined.timestamps)
                         appState.stillPositions = positions.sorted()
                         appState.isDetectingScenes = false
+                        appState.detectionStatusMessage = ""
                     }
                 }
             }
@@ -258,18 +265,6 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
 
             Spacer()
-
-            Button(action: {
-                // TODO: Replace with your Gumroad product URL
-                if let url = URL(string: "UPDATE_URL_PLACEHOLDER") {
-                    NSWorkspace.shared.open(url)
-                }
-            }) {
-                Label("Check for Updates", systemImage: "arrow.up.right.square")
-                    .font(.caption2)
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
         }
         .padding(.horizontal, 4)
         .padding(.top, 8)
@@ -672,18 +667,25 @@ struct ContentView: View {
         // Cancel any in-progress refinement
         refinementTask?.cancel()
         appState.isDetectingScenes = true
+        appState.detectionStatusMessage = ""
 
         refinementTask = Task {
             let refined = await videoProcessor.refineTimestamps(
                 from: url,
                 timestamps: appState.stillPositions,
                 videoDuration: appState.videoDuration,
-                progress: { _, _ in }
+                progress: { fraction, message in
+                    Task { @MainActor in
+                        appState.detectionProgress = fraction
+                        appState.detectionStatusMessage = message
+                    }
+                }
             )
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 appState.stillPositions = refined.timestamps
                 appState.isDetectingScenes = false
+                appState.detectionStatusMessage = ""
             }
         }
     }
@@ -708,6 +710,7 @@ struct ContentView: View {
 
         appState.isDetectingScenes = true
         appState.detectionProgress = 0
+        appState.detectionStatusMessage = ""
 
         appState.sceneDetectionTask = Task {
             do {
@@ -759,7 +762,12 @@ struct ContentView: View {
                         from: url,
                         timestamps: currentPositions,
                         videoDuration: durationSeconds,
-                        progress: { _, _ in }
+                        progress: { fraction, message in
+                            Task { @MainActor in
+                                appState.detectionProgress = fraction
+                                appState.detectionStatusMessage = message
+                            }
+                        }
                     )
                     try Task.checkCancellation()
                     await MainActor.run {
@@ -770,6 +778,7 @@ struct ContentView: View {
                 await MainActor.run {
                     appState.isDetectingScenes = false
                     appState.detectionProgress = 0
+                    appState.detectionStatusMessage = ""
                 }
             } catch is CancellationError {
                 // Task was cancelled — exit silently
@@ -778,6 +787,7 @@ struct ContentView: View {
                 await MainActor.run {
                     appState.isDetectingScenes = false
                     appState.detectionProgress = 0
+                    appState.detectionStatusMessage = ""
                     appState.scenesDetected = true
                     if let player = playerController {
                         appState.detectedScenes = [(start: 0.0, end: player.duration)]
@@ -873,7 +883,9 @@ struct AutoVideoPlayerSection: View {
                 VStack(spacing: 4) {
                     ProgressView(value: appState.detectionProgress)
                         .tint(.clipkitBlue)
-                    Text("Analyzing video… \(Int(appState.detectionProgress * 100))%")
+                    Text(appState.detectionStatusMessage.isEmpty
+                         ? "Analyzing video… \(Int(appState.detectionProgress * 100))%"
+                         : appState.detectionStatusMessage)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

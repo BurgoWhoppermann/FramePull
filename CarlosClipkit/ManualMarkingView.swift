@@ -668,17 +668,20 @@ struct ManualTimelineView: View {
                 ForEach(markedClips) { clip in
                     let inX = xPosition(for: clip.inPoint, width: width)
                     let outX = xPosition(for: clip.outPoint, width: width)
-                    let clipWidth = max(4, outX - inX)
                     let isDragging = draggingClipId == clip.id
 
-                    // Clip range background
+                    // Compute display positions that follow the drag handle
+                    let displayInX = isDragging && draggingClipEdge == .inPoint ? inX + clipDragOffset : inX
+                    let displayOutX = isDragging && draggingClipEdge == .outPoint ? outX + clipDragOffset : outX
+                    let clipWidth = max(4, displayOutX - displayInX)
+
+                    // Clip range background — follows drag
                     RoundedRectangle(cornerRadius: 2)
                         .fill(clipColor.opacity(isDragging ? 0.6 : 0.4))
                         .frame(width: clipWidth, height: 24)
-                        .position(x: inX + clipWidth / 2, y: 22)
+                        .position(x: displayInX + clipWidth / 2, y: 22)
 
                     // In point handle (left edge)
-                    let inHandleX = isDragging && draggingClipEdge == .inPoint ? inX + clipDragOffset : inX
                     let isInHovered = hoveredClipEdge?.0 == clip.id && hoveredClipEdge?.1 == .inPoint
                     let inHandleWidth: CGFloat = isInHovered ? 8 : 6
                     let inHandleHeight: CGFloat = isInHovered ? 34 : 30
@@ -686,9 +689,11 @@ struct ManualTimelineView: View {
                         .fill(clipColor)
                         .frame(width: inHandleWidth, height: inHandleHeight)
                         .shadow(color: isInHovered ? clipColor.opacity(0.6) : .clear, radius: 4)
+                        .animation(.easeInOut(duration: 0.15), value: isInHovered)
                         .frame(width: 20, height: 44)
                         .contentShape(Rectangle())
                         .onHover { hovering in
+                            guard draggingClipId == nil else { return }
                             if hovering {
                                 hoveredClipEdge = (clip.id, .inPoint)
                                 NSCursor.resizeLeftRight.push()
@@ -700,32 +705,27 @@ struct ManualTimelineView: View {
                             }
                         }
                         .highPriorityGesture(
-                            DragGesture(minimumDistance: 1)
+                            DragGesture(minimumDistance: 1, coordinateSpace: .named("timeline"))
                                 .onChanged { value in
                                     draggingClipId = clip.id
                                     draggingClipEdge = .inPoint
-                                    clipDragOffset = value.translation.width
-                                    // Scrub while dragging
-                                    let newX = inX + value.translation.width
-                                    let newTime = (Double(newX) / Double(width)) * duration
+                                    clipDragOffset = value.location.x - inX
+                                    let newTime = (Double(max(0, min(width, value.location.x))) / Double(width)) * duration
                                     onSeek(max(0, min(duration, newTime)))
                                 }
                                 .onEnded { value in
-                                    let newX = inX + value.translation.width
-                                    let newTime = (Double(newX) / Double(width)) * duration
-                                    let clampedTime = max(0, newTime)
-                                    onClipRangeChanged(clip.id, clampedTime, nil)
+                                    let clampedX = max(0, min(width, value.location.x))
+                                    let newTime = (Double(clampedX) / Double(width)) * duration
+                                    onClipRangeChanged(clip.id, max(0, newTime), nil)
                                     draggingClipId = nil
                                     draggingClipEdge = nil
                                     clipDragOffset = 0
                                 }
                         )
-                        .position(x: inHandleX, y: 22)
-                        .animation(.easeInOut(duration: 0.15), value: isInHovered)
-                        .zIndex(isDragging ? 50 : 5)
+                        .position(x: displayInX, y: 22)
+                        .zIndex(isDragging && draggingClipEdge == .inPoint ? 50 : 5)
 
                     // Out point handle (right edge)
-                    let outHandleX = isDragging && draggingClipEdge == .outPoint ? outX + clipDragOffset : outX
                     let isOutHovered = hoveredClipEdge?.0 == clip.id && hoveredClipEdge?.1 == .outPoint
                     let outHandleWidth: CGFloat = isOutHovered ? 8 : 6
                     let outHandleHeight: CGFloat = isOutHovered ? 34 : 30
@@ -733,9 +733,11 @@ struct ManualTimelineView: View {
                         .fill(clipColor)
                         .frame(width: outHandleWidth, height: outHandleHeight)
                         .shadow(color: isOutHovered ? clipColor.opacity(0.6) : .clear, radius: 4)
+                        .animation(.easeInOut(duration: 0.15), value: isOutHovered)
                         .frame(width: 20, height: 44)
                         .contentShape(Rectangle())
                         .onHover { hovering in
+                            guard draggingClipId == nil else { return }
                             if hovering {
                                 hoveredClipEdge = (clip.id, .outPoint)
                                 NSCursor.resizeLeftRight.push()
@@ -747,29 +749,25 @@ struct ManualTimelineView: View {
                             }
                         }
                         .highPriorityGesture(
-                            DragGesture(minimumDistance: 1)
+                            DragGesture(minimumDistance: 1, coordinateSpace: .named("timeline"))
                                 .onChanged { value in
                                     draggingClipId = clip.id
                                     draggingClipEdge = .outPoint
-                                    clipDragOffset = value.translation.width
-                                    // Scrub while dragging
-                                    let newX = outX + value.translation.width
-                                    let newTime = (Double(newX) / Double(width)) * duration
+                                    clipDragOffset = value.location.x - outX
+                                    let newTime = (Double(max(0, min(width, value.location.x))) / Double(width)) * duration
                                     onSeek(max(0, min(duration, newTime)))
                                 }
                                 .onEnded { value in
-                                    let newX = outX + value.translation.width
-                                    let newTime = (Double(newX) / Double(width)) * duration
-                                    let clampedTime = min(duration, newTime)
-                                    onClipRangeChanged(clip.id, nil, clampedTime)
+                                    let clampedX = max(0, min(width, value.location.x))
+                                    let newTime = (Double(clampedX) / Double(width)) * duration
+                                    onClipRangeChanged(clip.id, nil, min(duration, newTime))
                                     draggingClipId = nil
                                     draggingClipEdge = nil
                                     clipDragOffset = 0
                                 }
                         )
-                        .position(x: outHandleX, y: 22)
-                        .animation(.easeInOut(duration: 0.15), value: isOutHovered)
-                        .zIndex(isDragging ? 50 : 5)
+                        .position(x: displayOutX, y: 22)
+                        .zIndex(isDragging && draggingClipEdge == .outPoint ? 50 : 5)
                 }
 
                 // Pending IN point (orange dashed line)
@@ -783,9 +781,6 @@ struct ManualTimelineView: View {
                 }
 
                 // Still markers (orange dots - draggable)
-                // Use overlay approach: each marker has a fixed 30×44 hit area frame,
-                // positioned via offset. This ensures gesture hit-testing matches
-                // the visual position (unlike .position() which can misalign hit areas).
                 ForEach(markedStills) { still in
                     let baseX = xPosition(for: still.timestamp, width: width)
                     let isDragging = draggingStillId == still.id
@@ -797,9 +792,11 @@ struct ManualTimelineView: View {
                         .fill(stillColor)
                         .frame(width: size, height: size)
                         .shadow(color: (isDragging || isHovered) ? stillColor.opacity(0.6) : .clear, radius: 4)
+                        .animation(.easeInOut(duration: 0.15), value: isHovered)
                         .frame(width: 30, height: 44)
                         .contentShape(Rectangle())
                         .onHover { hovering in
+                            guard draggingStillId == nil else { return }
                             if hovering {
                                 hoveredStillId = still.id
                                 NSCursor.openHand.push()
@@ -815,30 +812,26 @@ struct ManualTimelineView: View {
                                 }
                         )
                         .highPriorityGesture(
-                            DragGesture(minimumDistance: 1)
+                            DragGesture(minimumDistance: 1, coordinateSpace: .named("timeline"))
                                 .onChanged { value in
                                     if draggingStillId != still.id {
                                         NSCursor.closedHand.push()
                                     }
                                     draggingStillId = still.id
-                                    stillDragOffset = value.translation.width
-                                    // Scrub video while dragging
-                                    let newX = baseX + value.translation.width
-                                    let newTime = (Double(newX) / Double(width)) * duration
+                                    stillDragOffset = value.location.x - baseX
+                                    let newTime = (Double(max(0, min(width, value.location.x))) / Double(width)) * duration
                                     onSeek(max(0, min(duration, newTime)))
                                 }
                                 .onEnded { value in
-                                    let finalX = baseX + value.translation.width
-                                    let newTime = (Double(finalX) / Double(width)) * duration
-                                    let clampedTime = max(0, min(duration, newTime))
-                                    onStillPositionChanged(still.id, clampedTime)
+                                    let clampedX = max(0, min(width, value.location.x))
+                                    let newTime = (Double(clampedX) / Double(width)) * duration
+                                    onStillPositionChanged(still.id, max(0, min(duration, newTime)))
                                     draggingStillId = nil
                                     stillDragOffset = 0
                                     NSCursor.pop()
                                 }
                         )
                         .position(x: currentX, y: 22)
-                        .animation(.easeInOut(duration: 0.15), value: isHovered)
                         .zIndex(isDragging ? 100 : (isHovered ? 50 : 10))
                 }
 
@@ -850,6 +843,7 @@ struct ManualTimelineView: View {
                     .position(x: playheadX, y: 22)
                     .zIndex(200)
             }
+            .coordinateSpace(name: "timeline")
             .frame(height: 44)
             .clipped()
             .contentShape(Rectangle())
@@ -861,21 +855,11 @@ struct ManualTimelineView: View {
                 }
             }
             .gesture(
-                DragGesture(minimumDistance: 0)
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("timeline"))
                     .onChanged { value in
-                        // Only seek if not dragging something else
                         guard draggingStillId == nil && draggingClipId == nil else { return }
-                        let x = value.location.x
-                        let newTime = (x / width) * duration
+                        let newTime = (Double(value.location.x) / Double(width)) * duration
                         onSeek(max(0, min(duration, newTime)))
-                    }
-                    .onEnded { _ in
-                        // Reset all drag state to prevent stale references after re-render
-                        draggingStillId = nil
-                        draggingClipId = nil
-                        draggingClipEdge = nil
-                        stillDragOffset = 0
-                        clipDragOffset = 0
                     }
             )
         }
