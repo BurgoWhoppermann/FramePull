@@ -84,24 +84,6 @@
 		};
 /* End PBXGroup section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		A1000041 /* Auto Build Number */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Auto Build Number";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# Auto-increment build number on Archive\n# Uses a .buildnum file to persist the counter without modifying the project\nBUILDNUM_FILE=\"${SRCROOT}/.buildnum\"\nif [ \"$ACTION\" = \"install\" ]; then\n  cur=0\n  [ -f \"$BUILDNUM_FILE\" ] && cur=$(cat \"$BUILDNUM_FILE\")\n  next=$((cur + 1))\n  echo \"$next\" > \"$BUILDNUM_FILE\"\n  plist=\"${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}\"\n  if [ -f \"$plist\" ]; then\n    /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $next\" \"$plist\"\n    echo \"Build number: $cur -> $next (archive)\"\n  fi\nfi\n";
-		};
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXNativeTarget section */
 		A1000013 /* CarlosClipkit */ = {
 			isa = PBXNativeTarget;
@@ -164,6 +146,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A1000041 /* Auto Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Auto Build Number";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Auto-increment build number on Archive\n# Uses a .buildnum file to persist the counter without modifying the project\nBUILDNUM_FILE=\"${SRCROOT}/.buildnum\"\nif [ \"$ACTION\" = \"install\" ]; then\n  cur=0\n  [ -f \"$BUILDNUM_FILE\" ] && cur=$(cat \"$BUILDNUM_FILE\")\n  next=$((cur + 1))\n  echo \"$next\" > \"$BUILDNUM_FILE\"\n  plist=\"${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}\"\n  if [ -f \"$plist\" ]; then\n    /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $next\" \"$plist\"\n    echo \"Build number: $cur -> $next (archive)\"\n  fi\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A1000015 /* Sources */ = {
@@ -318,7 +318,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 10;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = V7R6ZR7F9Q;
 				ENABLE_APP_SANDBOX = YES;
@@ -363,7 +363,7 @@
 				CODE_SIGN_ENTITLEMENTS = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 10;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;

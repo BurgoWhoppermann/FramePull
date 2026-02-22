@@ -192,7 +192,7 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.clipkitBlue)
 
-                    Text("MP4, MOV, M4V, AVI")
+                    Text("MP4, MOV")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.top, 4)
