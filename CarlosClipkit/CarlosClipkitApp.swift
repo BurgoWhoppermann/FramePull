@@ -163,7 +163,8 @@ class AppState: ObservableObject {
 
     // Moving clips settings (unified for GIF + video)
     @Published var clipDuration: Double = 5.0
-    @Published var adaptClipToScene: Bool = true
+    @Published var clipCount: Int = 5
+    @Published var avoidCrossingScenes: Bool = false
     @Published var gifFrameRate: Int = 15
     @Published var gifResolution: GIFResolution = .small
     @Published var clipFormat: OutputFormat = .mp4
@@ -375,7 +376,8 @@ class AppState: ObservableObject {
         stillSize = .full
         stillPlacement = .spreadEvenly
         clipDuration = 5.0
-        adaptClipToScene = true
+        clipCount = 5
+        avoidCrossingScenes = false
         gifFrameRate = 15
         gifResolution = .small
         clipFormat = .mp4

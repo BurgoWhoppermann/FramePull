@@ -415,6 +415,83 @@ class SceneDetector {
         return results.sorted { $0.start < $1.start }
     }
 
+    /// Select random non-overlapping clip start times across the full video duration
+    func selectRandomClips(
+        videoDuration: Double,
+        clipDuration: Double,
+        count: Int,
+        avoidCrossingScenes: Bool = false,
+        sceneRanges: [(start: Double, end: Double)] = []
+    ) -> [(start: Double, duration: Double)] {
+        guard videoDuration > clipDuration, count > 0 else { return [] }
+
+        let margin = 0.3
+        let usableStart = margin
+        let usableEnd = videoDuration - margin
+
+        // Build valid placement zones
+        var validZones: [(start: Double, end: Double)] = []
+
+        if avoidCrossingScenes && !sceneRanges.isEmpty {
+            for scene in sceneRanges {
+                let zoneStart = max(usableStart, scene.start + 0.1)
+                let zoneEnd = scene.end - clipDuration - 0.1
+                if zoneEnd > zoneStart {
+                    validZones.append((start: zoneStart, end: zoneEnd))
+                }
+            }
+        } else {
+            let zoneEnd = usableEnd - clipDuration
+            if zoneEnd > usableStart {
+                validZones.append((start: usableStart, end: zoneEnd))
+            }
+        }
+
+        guard !validZones.isEmpty else { return [] }
+
+        let totalZoneLength = validZones.reduce(0.0) { $0 + ($1.end - $1.start) }
+        let maxClips = Int(totalZoneLength / clipDuration)
+        let targetCount = min(count, max(1, maxClips))
+
+        // Generate random non-overlapping start times via rejection sampling
+        var placements: [Double] = []
+        var attempts = 0
+        let maxAttempts = targetCount * 100
+
+        while placements.count < targetCount && attempts < maxAttempts {
+            attempts += 1
+
+            // Pick a random point weighted by zone length
+            let randomPoint = Double.random(in: 0..<totalZoneLength)
+            var accumulated = 0.0
+            var chosenStart: Double? = nil
+
+            for zone in validZones {
+                let zoneLength = zone.end - zone.start
+                if randomPoint < accumulated + zoneLength {
+                    chosenStart = zone.start + (randomPoint - accumulated)
+                    break
+                }
+                accumulated += zoneLength
+            }
+
+            guard let startTime = chosenStart else { continue }
+
+            // Check for overlap with existing placements
+            let overlaps = placements.contains { existing in
+                let existingEnd = existing + clipDuration
+                let newEnd = startTime + clipDuration
+                return startTime < existingEnd && newEnd > existing
+            }
+
+            if !overlaps {
+                placements.append(startTime)
+            }
+        }
+
+        return placements.sorted().map { (start: $0, duration: clipDuration) }
+    }
+
     // MARK: - Private Methods
 
     /// Select a random timestamp within a scene range

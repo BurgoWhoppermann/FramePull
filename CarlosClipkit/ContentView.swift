@@ -16,11 +16,13 @@ struct ContentView: View {
     @State private var errorMessage: String = ""
     @State private var extractionComplete: Bool = false
     @State private var isDropTargeted: Bool = false
-    @State private var extractionMode: ExtractionMode = .auto
+    @State private var extractionMode: ExtractionMode = .manual
     @State private var playerController: LoopingPlayerController?
     @State private var isSwitchingMode: Bool = false
     @State private var showExportSheet: Bool = false
     @State private var refinementTask: Task<Void, Never>?
+    @State private var videoPlayerHeight: CGFloat = 300
+    @State private var videoDragStartHeight: CGFloat? = nil
 
     private let sceneDetector = SceneDetector()
     private let videoProcessor = VideoProcessor()
@@ -145,19 +147,34 @@ struct ContentView: View {
         }
         .onChange(of: appState.clipDuration) { _ in
             if appState.scenesDetected {
-                appState.clipRangeOverrides = sceneDetector.selectThreeStartTimesPerScene(
-                    sceneRanges: appState.detectedScenes,
-                    duration: appState.clipDuration,
-                    adaptToScene: appState.adaptClipToScene
+                appState.clipRangeOverrides = sceneDetector.selectRandomClips(
+                    videoDuration: appState.videoDuration,
+                    clipDuration: appState.clipDuration,
+                    count: appState.clipCount,
+                    avoidCrossingScenes: appState.avoidCrossingScenes,
+                    sceneRanges: appState.detectedScenes
                 )
             }
         }
-        .onChange(of: appState.adaptClipToScene) { _ in
+        .onChange(of: appState.avoidCrossingScenes) { _ in
             if appState.scenesDetected {
-                appState.clipRangeOverrides = sceneDetector.selectThreeStartTimesPerScene(
-                    sceneRanges: appState.detectedScenes,
-                    duration: appState.clipDuration,
-                    adaptToScene: appState.adaptClipToScene
+                appState.clipRangeOverrides = sceneDetector.selectRandomClips(
+                    videoDuration: appState.videoDuration,
+                    clipDuration: appState.clipDuration,
+                    count: appState.clipCount,
+                    avoidCrossingScenes: appState.avoidCrossingScenes,
+                    sceneRanges: appState.detectedScenes
+                )
+            }
+        }
+        .onChange(of: appState.clipCount) { _ in
+            if appState.scenesDetected {
+                appState.clipRangeOverrides = sceneDetector.selectRandomClips(
+                    videoDuration: appState.videoDuration,
+                    clipDuration: appState.clipDuration,
+                    count: appState.clipCount,
+                    avoidCrossingScenes: appState.avoidCrossingScenes,
+                    sceneRanges: appState.detectedScenes
                 )
             }
         }
@@ -217,7 +234,38 @@ struct ContentView: View {
         VStack(spacing: 0) {
             // Video player section - fixed at top (outside ScrollView)
             if let player = playerController {
-                AutoVideoPlayerSection(player: player, clipRanges: appState.exportMovingClipsEnabled ? calculateMovingClipRanges() : [])
+                AutoVideoPlayerSection(player: player, clipRanges: appState.exportMovingClipsEnabled ? calculateMovingClipRanges() : [], videoHeight: $videoPlayerHeight)
+
+                // Drag divider for resizing video player
+                Rectangle()
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(height: 6)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.gray.opacity(0.5))
+                            .frame(width: 40, height: 3)
+                    )
+                    .onHover { hovering in
+                        if hovering {
+                            NSCursor.resizeUpDown.push()
+                        } else {
+                            NSCursor.pop()
+                        }
+                    }
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                if videoDragStartHeight == nil {
+                                    videoDragStartHeight = videoPlayerHeight
+                                }
+                                videoPlayerHeight = max(120, min(600, (videoDragStartHeight ?? 300) + value.translation.height))
+                            }
+                            .onEnded { _ in
+                                videoDragStartHeight = nil
+                            }
+                    )
             }
 
             // Scrollable content
@@ -273,8 +321,8 @@ struct ContentView: View {
     private var modeToggle: some View {
         VStack(spacing: 4) {
             HStack(spacing: 10) {
-                modeCard(mode: .auto, title: "Auto", subtitle: "Analyze cuts and place markers automatically", icon: "wand.and.stars")
                 modeCard(mode: .manual, title: "Manual", subtitle: "Edit auto-generated markers or place them manually", icon: "hand.tap")
+                modeCard(mode: .auto, title: "Auto", subtitle: "Detect scene cuts and place markers automatically", icon: "wand.and.stars")
             }
             .disabled(isSwitchingMode)
 
@@ -364,30 +412,34 @@ struct ContentView: View {
         VStack(spacing: 16) {
             if appState.exportStillsEnabled {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("STILLS")
+                    Text("STILL DETECTION SETTINGS")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.clipkitBlue)
 
                     HStack {
                         Text("Number of stills:")
-                        Spacer()
-                        Button(action: {
-                            guard appState.scenesDetected, let url = appState.videoURL else { return }
-                            reinitializeStillPositions(url: url)
-                        }) {
-                            Image(systemName: "dice")
-                                .font(.system(size: 14))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .help("Re-roll: randomize still positions")
-                        .disabled(!appState.scenesDetected)
                         TextField("", value: $appState.stillCount, format: .number)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 60)
                             .multilineTextAlignment(.center)
                         Stepper("", value: $appState.stillCount, in: 1...100)
                             .labelsHidden()
+                        Spacer()
+                        Button(action: {
+                            guard appState.scenesDetected, let url = appState.videoURL else { return }
+                            reinitializeStillPositions(url: url)
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "dice")
+                                    .font(.system(size: 12))
+                                Text("Re-generate random")
+                                    .font(.caption)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Re-roll: randomize still positions")
+                        .disabled(!appState.scenesDetected)
                     }
 
                     HStack {
@@ -408,10 +460,44 @@ struct ContentView: View {
 
             if appState.exportMovingClipsEnabled {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("CLIPS")
+                    Text("CLIP SETTINGS")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.clipkitBlue)
 
+                    // Number of clips
+                    HStack {
+                        Text("Number of clips:")
+                        TextField("", value: $appState.clipCount, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                            .multilineTextAlignment(.center)
+                        Stepper("", value: $appState.clipCount, in: 1...50)
+                            .labelsHidden()
+                        Spacer()
+                        Button(action: {
+                            guard appState.scenesDetected else { return }
+                            appState.clipRangeOverrides = sceneDetector.selectRandomClips(
+                                videoDuration: appState.videoDuration,
+                                clipDuration: appState.clipDuration,
+                                count: appState.clipCount,
+                                avoidCrossingScenes: appState.avoidCrossingScenes,
+                                sceneRanges: appState.detectedScenes
+                            )
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "dice")
+                                    .font(.system(size: 12))
+                                Text("Re-generate random")
+                                    .font(.caption)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Re-roll: randomize clip positions")
+                        .disabled(!appState.scenesDetected)
+                    }
+
+                    // Duration slider
                     HStack {
                         Text("Duration:")
                         Spacer()
@@ -427,28 +513,24 @@ struct ContentView: View {
                     if appState.scenesDetected {
                         let clips = calculateMovingClipRanges()
                         let totalDuration = clips.reduce(0.0) { $0 + $1.duration }
-                        let shortenedCount = clips.filter { $0.duration < appState.clipDuration - 0.1 }.count
                         HStack(spacing: 4) {
                             Image(systemName: "film.stack")
                                 .font(.caption)
-                            if shortenedCount > 0 {
-                                Text("\(clips.count) clips · \(Int(totalDuration))s total (\(shortenedCount) shortened)")
-                            } else {
-                                Text("\(clips.count) clips · \(Int(totalDuration))s total")
-                            }
+                            Text("\(clips.count) clips · \(Int(totalDuration))s total")
                         }
                         .font(.caption)
                         .foregroundColor(.clipkitBlue)
                     }
 
+                    // Avoid crossing scenes checkbox
                     HStack {
-                        Toggle(isOn: $appState.adaptClipToScene) {
-                            Text("Fit clips to short scenes")
+                        Toggle(isOn: $appState.avoidCrossingScenes) {
+                            Text("Avoid crossing scenes")
                         }
                         .toggleStyle(.checkbox)
                         Spacer()
                     }
-                    Text("Shortens clips to fit scenes shorter than the target duration (min 50%). Without this, short scenes are skipped.")
+                    Text("When checked, clips won't span across detected scene boundaries.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -463,7 +545,7 @@ struct ContentView: View {
             if extractionComplete {
                 completionView
             } else {
-                // Cut sensitivity + Analyze / Reset
+                // Cut sensitivity + Detect / Reset
                 if appState.videoURL != nil {
                     // Cut sensitivity slider
                     VStack(alignment: .leading, spacing: 4) {
@@ -493,7 +575,7 @@ struct ContentView: View {
                         }) {
                             HStack(spacing: 6) {
                                 Label(
-                                    appState.scenesDetected ? "Re-analyze" : "Analyze Video",
+                                    appState.scenesDetected ? "Re-detect Scenes" : "Detect Scenes",
                                     systemImage: "wand.and.stars"
                                 )
                                 if appState.needsReanalysis {
@@ -520,11 +602,11 @@ struct ContentView: View {
                     }
 
                     if appState.needsReanalysis {
-                        Label("Settings changed — re-analyze to apply", systemImage: "arrow.triangle.2.circlepath")
+                        Label("Settings changed — re-detect to apply", systemImage: "arrow.triangle.2.circlepath")
                             .font(.caption)
                             .foregroundColor(.orange)
                     } else if appState.scenesDetected {
-                        Text("Re-analyze to get different marker positions")
+                        Text("Re-detect to get different marker positions")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -642,11 +724,13 @@ struct ContentView: View {
         if let overrides = appState.clipRangeOverrides {
             return overrides
         }
-        guard !appState.detectedScenes.isEmpty else { return [] }
-        return sceneDetector.selectThreeStartTimesPerScene(
-            sceneRanges: appState.detectedScenes,
-            duration: appState.clipDuration,
-            adaptToScene: appState.adaptClipToScene
+        guard appState.videoDuration > 0 else { return [] }
+        return sceneDetector.selectRandomClips(
+            videoDuration: appState.videoDuration,
+            clipDuration: appState.clipDuration,
+            count: appState.clipCount,
+            avoidCrossingScenes: appState.avoidCrossingScenes,
+            sceneRanges: appState.detectedScenes
         )
     }
 
@@ -740,10 +824,12 @@ struct ContentView: View {
                     appState.scenesDetected = true
 
                     // Cache clip ranges so they don't regenerate on every SwiftUI redraw
-                    appState.clipRangeOverrides = sceneDetector.selectThreeStartTimesPerScene(
-                        sceneRanges: scenes,
-                        duration: appState.clipDuration,
-                        adaptToScene: appState.adaptClipToScene
+                    appState.clipRangeOverrides = sceneDetector.selectRandomClips(
+                        videoDuration: durationSeconds,
+                        clipDuration: appState.clipDuration,
+                        count: appState.clipCount,
+                        avoidCrossingScenes: appState.avoidCrossingScenes,
+                        sceneRanges: scenes
                     )
                 }
 
@@ -793,10 +879,12 @@ struct ContentView: View {
                         appState.detectedScenes = [(start: 0.0, end: player.duration)]
                         appState.videoDuration = player.duration
                         appState.initializeStillPositions(from: appState.detectedScenes, count: appState.stillCount)
-                        appState.clipRangeOverrides = sceneDetector.selectThreeStartTimesPerScene(
-                            sceneRanges: appState.detectedScenes,
-                            duration: appState.clipDuration,
-                            adaptToScene: appState.adaptClipToScene
+                        appState.clipRangeOverrides = sceneDetector.selectRandomClips(
+                            videoDuration: player.duration,
+                            clipDuration: appState.clipDuration,
+                            count: appState.clipCount,
+                            avoidCrossingScenes: appState.avoidCrossingScenes,
+                            sceneRanges: appState.detectedScenes
                         )
                     }
                 }
@@ -811,6 +899,7 @@ struct AutoVideoPlayerSection: View {
     @ObservedObject var player: LoopingPlayerController
     @EnvironmentObject var appState: AppState
     let clipRanges: [(start: Double, duration: Double)]
+    @Binding var videoHeight: CGFloat
 
     var body: some View {
         VStack(spacing: 8) {
@@ -820,7 +909,7 @@ struct AutoVideoPlayerSection: View {
                 onClick: { player.togglePlayPause() }
             )
             .aspectRatio(player.aspectRatio, contentMode: .fit)
-            .frame(minHeight: 150, maxHeight: 400)
+            .frame(height: videoHeight)
             .background(Color.black)
             .cornerRadius(8)
             .clipped()
@@ -884,7 +973,7 @@ struct AutoVideoPlayerSection: View {
                     ProgressView(value: appState.detectionProgress)
                         .tint(.clipkitBlue)
                     Text(appState.detectionStatusMessage.isEmpty
-                         ? "Analyzing video… \(Int(appState.detectionProgress * 100))%"
+                         ? "Detecting scene cuts… \(Int(appState.detectionProgress * 100))%"
                          : appState.detectionStatusMessage)
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -922,6 +1011,10 @@ struct ExtractionTimelineView: View {
 
     // Moving clip ranges
     let clipRanges: [(start: Double, duration: Double)]
+
+    // Selected marker for snap behavior
+    @State private var selectedMarkerIndex: Int? = nil
+    private let snapThresholdPx: CGFloat = 18
 
     // Marker colors
     private let stillColor = Color.orange
@@ -966,14 +1059,22 @@ struct ExtractionTimelineView: View {
                         .position(x: xStart + rangeWidth / 2, y: 22)
                 }
 
-                // Still markers (simple read-only orange circles)
-                ForEach(Array(stillPositions.enumerated()), id: \.offset) { _, time in
+                // Still markers (orange circles, with snap-selection highlight)
+                ForEach(Array(stillPositions.enumerated()), id: \.offset) { index, time in
                     let x = xPosition(for: time, width: width)
+                    let isSelected = selectedMarkerIndex == index
                     Circle()
                         .fill(stillColor)
-                        .frame(width: 10, height: 10)
+                        .frame(width: isSelected ? 14 : 10, height: isSelected ? 14 : 10)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Color.white, lineWidth: isSelected ? 2 : 0)
+                                .frame(width: isSelected ? 14 : 10, height: isSelected ? 14 : 10)
+                        )
+                        .shadow(color: isSelected ? stillColor.opacity(0.8) : .clear, radius: 6)
                         .position(x: x, y: 22)
-                        .zIndex(10)
+                        .zIndex(isSelected ? 20 : 10)
+                        .animation(.easeInOut(duration: 0.15), value: isSelected)
                 }
 
                 // Playhead (current position) - highest z-index
@@ -991,13 +1092,34 @@ struct ExtractionTimelineView: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         let x = value.location.x
-                        let newTime = (x / width) * duration
-                        let clampedTime = max(0, min(duration, newTime))
-                        onSeek(clampedTime)
+                        if let snapIndex = nearestStillIndex(at: x, width: width) {
+                            selectedMarkerIndex = snapIndex
+                            onSeek(stillPositions[snapIndex])
+                        } else {
+                            selectedMarkerIndex = nil
+                            let newTime = (x / width) * duration
+                            let clampedTime = max(0, min(duration, newTime))
+                            onSeek(clampedTime)
+                        }
                     }
             )
         }
         .frame(height: 44)
+    }
+
+    private func nearestStillIndex(at xPosition: CGFloat, width: CGFloat) -> Int? {
+        guard !stillPositions.isEmpty, width > 0 else { return nil }
+        var bestIndex: Int? = nil
+        var bestDistance: CGFloat = .greatestFiniteMagnitude
+        for (index, time) in stillPositions.enumerated() {
+            let markerX = self.xPosition(for: time, width: width)
+            let distance = abs(xPosition - markerX)
+            if distance < snapThresholdPx && distance < bestDistance {
+                bestDistance = distance
+                bestIndex = index
+            }
+        }
+        return bestIndex
     }
 
     private func xPosition(for time: Double, width: CGFloat) -> CGFloat {

@@ -403,10 +403,12 @@ struct ExportSettingsView: View {
             clipSpecs = cached
         } else {
             let sceneDetector = SceneDetector()
-            clipSpecs = sceneDetector.selectThreeStartTimesPerScene(
-                sceneRanges: scenes,
-                duration: appState.clipDuration,
-                adaptToScene: appState.adaptClipToScene
+            clipSpecs = sceneDetector.selectRandomClips(
+                videoDuration: appState.videoDuration,
+                clipDuration: appState.clipDuration,
+                count: appState.clipCount,
+                avoidCrossingScenes: appState.avoidCrossingScenes,
+                sceneRanges: scenes
             )
         }
 

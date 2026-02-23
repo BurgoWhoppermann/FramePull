@@ -16,6 +16,8 @@ struct ManualMarkingView: View {
     @State private var isDetectingScenes = false
     @State private var showExportSheet = false
     @State private var lastPressedKey: String? = nil
+    @State private var videoPlayerHeight: CGFloat = 300
+    @State private var videoDragStartHeight: CGFloat? = nil
 
     private let sceneDetector = SceneDetector()
 
@@ -110,14 +112,48 @@ struct ManualMarkingView: View {
     // MARK: - Video Player Section
 
     private var videoPlayerSection: some View {
-        VideoPlayerRepresentable(
-            player: playerController.player,
-            onKeyPress: handleKeyPress,
-            onClick: { playerController.togglePlayPause() }
-        )
-        .aspectRatio(playerController.aspectRatio, contentMode: .fit)
-        .background(Color.black)
-        .clipped()
+        VStack(spacing: 0) {
+            VideoPlayerRepresentable(
+                player: playerController.player,
+                onKeyPress: handleKeyPress,
+                onClick: { playerController.togglePlayPause() }
+            )
+            .aspectRatio(playerController.aspectRatio, contentMode: .fit)
+            .frame(height: videoPlayerHeight)
+            .background(Color.black)
+            .clipped()
+
+            // Drag divider for resizing video player
+            Rectangle()
+                .fill(Color.gray.opacity(0.2))
+                .frame(height: 6)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.gray.opacity(0.5))
+                        .frame(width: 40, height: 3)
+                )
+                .onHover { hovering in
+                    if hovering {
+                        NSCursor.resizeUpDown.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            if videoDragStartHeight == nil {
+                                videoDragStartHeight = videoPlayerHeight
+                            }
+                            videoPlayerHeight = max(120, min(600, (videoDragStartHeight ?? 300) + value.translation.height))
+                        }
+                        .onEnded { _ in
+                            videoDragStartHeight = nil
+                        }
+                )
+        }
     }
 
     // MARK: - Controls Bar
@@ -167,7 +203,7 @@ struct ManualMarkingView: View {
                 if isDetectingScenes {
                     ProgressView()
                         .scaleEffect(0.6)
-                    Text("Analyzing...")
+                    Text("Detecting cuts...")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else if markingState.detectedCutsCount > 0 {
@@ -460,11 +496,11 @@ struct ManualMarkingView: View {
                 }
             }
 
-            // Analyze / Reset row (matches auto mode)
+            // Detect / Reset row (matches auto mode)
             HStack(spacing: 12) {
                 Button(action: { detectScenes() }) {
                     Label(
-                        appState.scenesDetected ? "Re-analyze" : "Analyze Video",
+                        appState.scenesDetected ? "Re-detect Scenes" : "Detect Scenes",
                         systemImage: "wand.and.stars"
                     )
                     .frame(maxWidth: .infinity)
