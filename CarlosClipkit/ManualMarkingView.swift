@@ -18,6 +18,7 @@ struct ManualMarkingView: View {
     @State private var lastPressedKey: String? = nil
     @State private var videoPlayerHeight: CGFloat = 300
     @State private var videoDragStartHeight: CGFloat? = nil
+    @State private var showVolumeSlider = false
 
     private let sceneDetector = SceneDetector()
 
@@ -36,6 +37,21 @@ struct ManualMarkingView: View {
 
             // Video Player
             videoPlayerSection
+
+            // Detection progress bar
+            if isDetectingScenes || appState.isDetectingScenes {
+                VStack(spacing: 4) {
+                    ProgressView(value: appState.detectionProgress)
+                        .tint(.clipkitBlue)
+                    Text(appState.detectionStatusMessage.isEmpty
+                         ? "Detecting scene cuts… \(Int(appState.detectionProgress * 100))%"
+                         : appState.detectionStatusMessage)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 4)
+            }
 
             // Controls bar
             controlsBar
@@ -168,23 +184,58 @@ struct ManualMarkingView: View {
 
                     Spacer()
 
-                    // Playback info bar
-                    HStack(spacing: 8) {
-                        Image(systemName: playerController.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 12))
-                        if playerController.isMuted {
-                            Image(systemName: "speaker.slash.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(.red)
+                    // Playback controls (floating buttons)
+                    HStack(spacing: 10) {
+                        Button(action: { playerController.togglePlayPause() }) {
+                            Image(systemName: playerController.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(.black.opacity(0.45))
+                                .clipShape(Circle())
                         }
+                        .buttonStyle(.plain)
+                        .help("Play/Pause (Space)")
+
+                        Button(action: { showVolumeSlider.toggle() }) {
+                            Image(systemName: playerController.volumeIconName)
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(playerController.isMuted ? .red : .white)
+                                .frame(width: 44, height: 44)
+                                .background(.black.opacity(0.45))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Volume")
+                        .popover(isPresented: $showVolumeSlider, arrowEdge: .top) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "speaker.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Slider(value: Binding(
+                                    get: { Double(playerController.volume) },
+                                    set: { playerController.setVolume(Float($0)) }
+                                ), in: 0...1)
+                                .frame(width: 100)
+                                .tint(.clipkitBlue)
+                                Image(systemName: "speaker.wave.3.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(12)
+                        }
+
                         Spacer()
+
                         Text("\(playerController.formattedCurrentTime) / \(playerController.formattedDuration)")
-                            .font(.system(.caption2, design: .monospaced))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.black.opacity(0.4))
+                            .cornerRadius(8)
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.black.opacity(0.5))
+                    .padding(8)
                 }
             }
 
@@ -212,7 +263,7 @@ struct ManualMarkingView: View {
                             if videoDragStartHeight == nil {
                                 videoDragStartHeight = videoPlayerHeight
                             }
-                            videoPlayerHeight = max(120, min(600, (videoDragStartHeight ?? 300) + value.translation.height))
+                            videoPlayerHeight = max(180, min(600, (videoDragStartHeight ?? 300) + value.translation.height))
                         }
                         .onEnded { _ in
                             videoDragStartHeight = nil
@@ -456,6 +507,9 @@ struct ManualMarkingView: View {
                     .padding(.horizontal, 8)
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(6)
+                    .onTapGesture(count: 2) {
+                        markingState.removeStill(id: still.id)
+                    }
                 }
             }
         }
@@ -510,6 +564,9 @@ struct ManualMarkingView: View {
                     .padding(.horizontal, 8)
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(6)
+                    .onTapGesture(count: 2) {
+                        markingState.removeClip(id: clip.id)
+                    }
                 }
             }
         }

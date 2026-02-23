@@ -101,49 +101,14 @@ struct ContentView: View {
             }
         }
         .onChange(of: appState.stillCount) { newCount in
-            if appState.scenesDetected, let url = appState.videoURL {
-                let previousPositions = Set(appState.stillPositions)
+            if appState.scenesDetected {
                 appState.adjustStillPositions(to: newCount, scenes: appState.detectedScenes)
-
-                // Only refine newly added positions when "prefer faces" mode is active
-                let newPositions = appState.stillPositions.filter { !previousPositions.contains($0) }
-                guard !newPositions.isEmpty, appState.stillPlacement == .preferFaces else { return }
-
-                refinementTask?.cancel()
-                appState.isDetectingScenes = true
-                appState.detectionStatusMessage = ""
-                refinementTask = Task {
-                    let refined = await videoProcessor.refineTimestamps(
-                        from: url,
-                        timestamps: newPositions,
-                        videoDuration: appState.videoDuration,
-                        progress: { fraction, message in
-                            Task { @MainActor in
-                                appState.detectionProgress = fraction
-                                appState.detectionStatusMessage = message
-                            }
-                        }
-                    )
-                    guard !Task.isCancelled else { return }
-                    await MainActor.run {
-                        // Replace the new unrefined positions with refined ones
-                        var positions = appState.stillPositions.filter { previousPositions.contains($0) }
-                        positions.append(contentsOf: refined.timestamps)
-                        appState.stillPositions = positions.sorted()
-                        appState.isDetectingScenes = false
-                        appState.detectionStatusMessage = ""
-                    }
-                }
             }
         }
         .onChange(of: appState.stillPlacement) { _ in
-            guard appState.scenesDetected, let url = appState.videoURL else { return }
-            // Immediately redistribute stills with the new strategy
+            guard appState.scenesDetected else { return }
+            // Redistribute stills with the new strategy (no auto-refinement)
             appState.initializeStillPositions(from: appState.detectedScenes, count: appState.stillCount)
-            // If switching to "prefer faces", also run face refinement
-            if appState.stillPlacement == .preferFaces {
-                applyFaceRefinement(url: url)
-            }
         }
         .onChange(of: appState.clipDuration) { _ in
             if appState.scenesDetected {
@@ -318,7 +283,7 @@ struct ContentView: View {
                         if videoDragStartHeight == nil {
                             videoDragStartHeight = videoPlayerHeight
                         }
-                        videoPlayerHeight = max(120, min(600, (videoDragStartHeight ?? 300) + value.translation.height))
+                        videoPlayerHeight = max(180, min(600, (videoDragStartHeight ?? 300) + value.translation.height))
                     }
                     .onEnded { _ in
                         videoDragStartHeight = nil
@@ -961,30 +926,9 @@ struct ContentView: View {
 
                 try Task.checkCancellation()
 
-                // Distribute stills across scenes
+                // Distribute stills across scenes (no auto-refinement — user clicks Re-generate for face refinement)
                 await MainActor.run {
                     appState.initializeStillPositions(from: scenes, count: appState.stillCount)
-                }
-
-                // Refine still positions if "prefer faces" placement is active
-                if appState.stillPlacement == .preferFaces {
-                    try Task.checkCancellation()
-                    let currentPositions = await MainActor.run { appState.stillPositions }
-                    let refined = await videoProcessor.refineTimestamps(
-                        from: url,
-                        timestamps: currentPositions,
-                        videoDuration: durationSeconds,
-                        progress: { fraction, message in
-                            Task { @MainActor in
-                                appState.detectionProgress = fraction
-                                appState.detectionStatusMessage = message
-                            }
-                        }
-                    )
-                    try Task.checkCancellation()
-                    await MainActor.run {
-                        appState.stillPositions = refined.timestamps
-                    }
                 }
 
                 await MainActor.run {
@@ -1028,6 +972,7 @@ struct AutoVideoPlayerSection: View {
     let clipRanges: [(start: Double, duration: Double)]
     @Binding var videoHeight: CGFloat
     var onClearVideo: (() -> Void)? = nil
+    @State private var showVolumeSlider = false
 
     var body: some View {
         VStack(spacing: 4) {
@@ -1072,32 +1017,58 @@ struct AutoVideoPlayerSection: View {
 
                     Spacer()
 
-                    // Playback controls bar
-                    HStack(spacing: 8) {
+                    // Playback controls (floating buttons)
+                    HStack(spacing: 10) {
                         Button(action: { player.togglePlayPause() }) {
                             Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 14))
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(.black.opacity(0.45))
+                                .clipShape(Circle())
                         }
                         .buttonStyle(.plain)
                         .help("Play/Pause")
 
-                        Button(action: { player.toggleMute() }) {
-                            Image(systemName: player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                                .font(.system(size: 14))
+                        Button(action: { showVolumeSlider.toggle() }) {
+                            Image(systemName: player.volumeIconName)
+                                .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(player.isMuted ? .red : .white)
+                                .frame(width: 44, height: 44)
+                                .background(.black.opacity(0.45))
+                                .clipShape(Circle())
                         }
                         .buttonStyle(.plain)
-                        .help(player.isMuted ? "Unmute" : "Mute")
+                        .help("Volume")
+                        .popover(isPresented: $showVolumeSlider, arrowEdge: .top) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "speaker.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Slider(value: Binding(
+                                    get: { Double(player.volume) },
+                                    set: { player.setVolume(Float($0)) }
+                                ), in: 0...1)
+                                .frame(width: 100)
+                                .tint(.clipkitBlue)
+                                Image(systemName: "speaker.wave.3.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(12)
+                        }
 
                         Spacer()
 
                         Text("\(player.formattedCurrentTime) / \(player.formattedDuration)")
-                            .font(.system(.caption2, design: .monospaced))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.black.opacity(0.4))
+                            .cornerRadius(8)
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.black.opacity(0.5))
+                    .padding(8)
                 }
             }
 

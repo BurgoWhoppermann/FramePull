@@ -322,6 +322,7 @@ class VideoProcessor {
 
     /// Refine candidate timestamps by finding the sharpest face-containing frame nearby.
     /// If no face is found, falls back to the sharpest frame overall (never drops stills).
+    /// Each still is constrained to search within its "zone" (midpoints to neighbors) to prevent clustering.
     func refineTimestamps(
         from videoURL: URL,
         timestamps: [Double],
@@ -339,13 +340,30 @@ class VideoProcessor {
 
         defer { generator.cancelAllCGImageGeneration() }
 
+        // Sort timestamps so we can compute zone boundaries
+        let sorted = timestamps.sorted()
+
         var refined: [Double] = []
         var shiftedCount = 0
 
-        for (index, timestamp) in timestamps.enumerated() {
-            progress(Double(index) / Double(timestamps.count), "Refining frame \(index + 1) of \(timestamps.count)...")
+        for (index, timestamp) in sorted.enumerated() {
+            progress(Double(index) / Double(sorted.count), "Refining frame \(index + 1) of \(sorted.count)...")
 
-            let bestTime = await findBestFrameTimestamp(generator: generator, targetTime: timestamp, videoDuration: videoDuration)
+            // Compute zone boundaries: each still stays within midpoints to its neighbors
+            let minBound = index == 0
+                ? 0.0
+                : (sorted[index - 1] + timestamp) / 2.0
+            let maxBound = index == sorted.count - 1
+                ? videoDuration
+                : (timestamp + sorted[index + 1]) / 2.0
+
+            let bestTime = await findBestFrameTimestamp(
+                generator: generator,
+                targetTime: timestamp,
+                videoDuration: videoDuration,
+                minBound: minBound,
+                maxBound: maxBound
+            )
             refined.append(bestTime)
 
             if abs(bestTime - timestamp) > 0.1 {
@@ -358,12 +376,18 @@ class VideoProcessor {
     }
 
     /// Find the best frame near a target time: prefers sharp face frames, falls back to sharpest frame.
-    /// Searches ±3s outward from target. Never returns nil — always finds the best available frame.
+    /// Searches ±3s outward from target, constrained to [minBound, maxBound] zone.
+    /// Never returns nil — always finds the best available frame.
     private func findBestFrameTimestamp(
         generator: AVAssetImageGenerator,
         targetTime: Double,
-        videoDuration: Double
+        videoDuration: Double,
+        minBound: Double = 0,
+        maxBound: Double = .greatestFiniteMagnitude
     ) async -> Double {
+        let effectiveMin = max(0.1, minBound)
+        let effectiveMax = min(videoDuration - 0.1, maxBound)
+
         let offsets: [Double] = [0, 0.3, 0.6, 1.0, 1.5, 2.0, 2.5, 3.0]
         var candidateTimes: [Double] = []
 
@@ -373,8 +397,8 @@ class VideoProcessor {
             } else {
                 let earlier = targetTime - offset
                 let later = targetTime + offset
-                if earlier >= 0.1 { candidateTimes.append(earlier) }
-                if later <= videoDuration - 0.1 { candidateTimes.append(later) }
+                if earlier >= effectiveMin { candidateTimes.append(earlier) }
+                if later <= effectiveMax { candidateTimes.append(later) }
             }
         }
 

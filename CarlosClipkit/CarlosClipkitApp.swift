@@ -115,20 +115,42 @@ extension Color {
 @main
 struct ClipkitApp: App {
     @StateObject private var appState = AppState()
+    @State private var showSplash = true  // Always show on launch
+
+    private var currentBuild: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+    }
+    private var currentVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
-                .frame(minWidth: 420, minHeight: 580)
+                .frame(minWidth: 480, minHeight: 720)
                 .onOpenURL { url in
                     appState.videoURL = url
+                }
+                .sheet(isPresented: $showSplash) {
+                    BetaSplashView(
+                        version: currentVersion,
+                        build: currentBuild,
+                        onDismiss: {
+                            showSplash = false
+                        }
+                    )
                 }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) { }
+            CommandGroup(after: .appInfo) {
+                Button("What's New…") {
+                    showSplash = true
+                }
+            }
         }
     }
 }

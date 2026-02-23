@@ -103,6 +103,7 @@ class LoopingPlayerController: ObservableObject {
 
     @Published var isPlaying: Bool = false
     @Published var isMuted: Bool = false
+    @Published var volume: Float = 1.0
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
     @Published var videoSize: CGSize = CGSize(width: 16, height: 9) // Default aspect ratio
@@ -209,6 +210,30 @@ class LoopingPlayerController: ObservableObject {
     func toggleMute() {
         isMuted.toggle()
         player.isMuted = isMuted
+    }
+
+    func setVolume(_ newVolume: Float) {
+        volume = max(0, min(1, newVolume))
+        player.volume = volume
+        if volume == 0 {
+            isMuted = true
+            player.isMuted = true
+        } else if isMuted {
+            isMuted = false
+            player.isMuted = false
+        }
+    }
+
+    var volumeIconName: String {
+        if isMuted || volume == 0 {
+            return "speaker.slash.fill"
+        } else if volume < 0.33 {
+            return "speaker.wave.1.fill"
+        } else if volume < 0.66 {
+            return "speaker.wave.2.fill"
+        } else {
+            return "speaker.wave.3.fill"
+        }
     }
 
     func setRate(_ rate: Float) {
