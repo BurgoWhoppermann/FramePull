@@ -247,17 +247,14 @@ struct ContentView: View {
     // MARK: - Video Loaded View
     private func videoLoadedView(videoURL: URL) -> some View {
         VStack(spacing: 0) {
-            // Top section: video info + scene detection controls (fixed)
-            VStack(spacing: 12) {
-                videoHeader(videoURL: videoURL)
-                sceneDetectionControls
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 8)
+            // Top section: scene detection controls (fixed)
+            sceneDetectionControls
+                .padding(.horizontal)
+                .padding(.bottom, 8)
 
             // Video player section (fixed)
             if let player = playerController {
-                AutoVideoPlayerSection(player: player, clipRanges: appState.exportMovingClipsEnabled ? calculateMovingClipRanges() : [], videoHeight: $videoPlayerHeight)
+                AutoVideoPlayerSection(player: player, clipRanges: appState.exportMovingClipsEnabled ? calculateMovingClipRanges() : [], videoHeight: $videoPlayerHeight, onClearVideo: clearVideo)
 
                 // Drag divider for resizing video player
                 resizeDivider
@@ -390,10 +387,6 @@ struct ContentView: View {
                 Label("Settings changed — re-detect to apply", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption)
                     .foregroundColor(.orange)
-            } else if appState.scenesDetected {
-                Text("Re-detect to get different marker positions")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
     }
@@ -554,40 +547,35 @@ struct ContentView: View {
 
     // MARK: - Export Settings (stills & clips)
     private var detectionSettingsSection: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 16) {
             if appState.exportStillsEnabled {
-                VStack(alignment: .leading, spacing: 12) {
-                    // Section header with re-roll button
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Still Detection")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.clipkitBlue)
+
                     HStack {
-                        Text("Still Detection")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.clipkitBlue)
-                        Spacer()
+                        Text("Count:")
+                        TextField("", value: $appState.stillCount, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 50)
+                            .multilineTextAlignment(.center)
+                        Stepper("", value: $appState.stillCount, in: 1...100)
+                            .labelsHidden()
                         Button(action: {
                             guard appState.scenesDetected, let url = appState.videoURL else { return }
                             reinitializeStillPositions(url: url)
                         }) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 3) {
                                 Image(systemName: "dice")
-                                    .font(.system(size: 12))
-                                Text("Re-generate random")
+                                    .font(.system(size: 11))
+                                Text("Re-generate")
                                     .font(.caption)
                             }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .help("Re-roll: randomize still positions")
                         .disabled(!appState.scenesDetected)
-                    }
-
-                    HStack {
-                        Text("Number of stills:")
-                        TextField("", value: $appState.stillCount, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
-                            .multilineTextAlignment(.center)
-                        Stepper("", value: $appState.stillCount, in: 1...100)
-                            .labelsHidden()
                         Spacer()
                     }
 
@@ -601,20 +589,24 @@ struct ContentView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                     }
-                    Text(appState.stillPlacement.description)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
             }
 
             if appState.exportMovingClipsEnabled {
-                VStack(alignment: .leading, spacing: 12) {
-                    // Section header with re-roll button
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Clip Detection")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.clipkitBlue)
+
+                    // Count + re-generate
                     HStack {
-                        Text("Clip Detection")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.clipkitBlue)
-                        Spacer()
+                        Text("Count:")
+                        TextField("", value: $appState.clipCount, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 50)
+                            .multilineTextAlignment(.center)
+                        Stepper("", value: $appState.clipCount, in: 1...50)
+                            .labelsHidden()
                         Button(action: {
                             guard appState.scenesDetected else { return }
                             appState.clipRangeOverrides = sceneDetector.selectRandomClips(
@@ -626,58 +618,42 @@ struct ContentView: View {
                                 sceneRanges: appState.detectedScenes
                             )
                         }) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 3) {
                                 Image(systemName: "dice")
-                                    .font(.system(size: 12))
-                                Text("Re-generate random")
+                                    .font(.system(size: 11))
+                                Text("Re-generate")
                                     .font(.caption)
                             }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .help("Re-roll: randomize clip positions")
                         .disabled(!appState.scenesDetected)
-                    }
-
-                    // Number of clips
-                    HStack {
-                        Text("Number of clips:")
-                        TextField("", value: $appState.clipCount, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
-                            .multilineTextAlignment(.center)
-                        Stepper("", value: $appState.clipCount, in: 1...50)
-                            .labelsHidden()
                         Spacer()
                     }
 
-                    // Duration slider
+                    // Duration + live feedback
                     HStack {
                         Text("Duration:")
-                        Spacer()
+                        Slider(value: $appState.clipDuration, in: 1.0...30.0, step: 1.0)
+                            .frame(width: 100)
+                            .tint(.clipkitBlue)
                         Text("\(appState.clipDuration, specifier: "%.0f")s")
                             .foregroundColor(.secondary)
-                            .frame(width: 40)
-                        Slider(value: $appState.clipDuration, in: 1.0...30.0, step: 1.0)
-                            .frame(width: 120)
-                            .tint(.clipkitBlue)
-                    }
-
-                    // Clip count summary (live feedback)
-                    if appState.scenesDetected {
-                        let clips = calculateMovingClipRanges()
-                        let totalDuration = clips.reduce(0.0) { $0 + $1.duration }
-                        HStack(spacing: 4) {
-                            Image(systemName: "film.stack")
+                            .frame(width: 30)
+                        if appState.scenesDetected {
+                            let clips = calculateMovingClipRanges()
+                            let totalDuration = clips.reduce(0.0) { $0 + $1.duration }
+                            Text("·")
+                                .foregroundColor(.secondary)
+                            Text("\(clips.count) clips, \(Int(totalDuration))s")
                                 .font(.caption)
-                            Text("\(clips.count) clips · \(Int(totalDuration))s total")
+                                .foregroundColor(.clipkitBlue)
                         }
-                        .font(.caption)
-                        .foregroundColor(.clipkitBlue)
+                        Spacer()
                     }
 
-                    // Checkboxes
-                    VStack(alignment: .leading, spacing: 6) {
+                    // Both checkboxes on one row
+                    HStack(spacing: 16) {
                         Toggle(isOn: $appState.avoidCrossingScenes) {
                             Text("Avoid crossing scenes")
                         }
@@ -687,6 +663,8 @@ struct ContentView: View {
                             Text("Allow overlapping")
                         }
                         .toggleStyle(.checkbox)
+
+                        Spacer()
                     }
                 }
             }
@@ -1049,44 +1027,79 @@ struct AutoVideoPlayerSection: View {
     @EnvironmentObject var appState: AppState
     let clipRanges: [(start: Double, duration: Double)]
     @Binding var videoHeight: CGFloat
+    var onClearVideo: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 8) {
-            VideoPlayerRepresentable(
-                player: player.player,
-                onKeyPress: { _ in },
-                onClick: { player.togglePlayPause() }
-            )
-            .aspectRatio(player.aspectRatio, contentMode: .fit)
-            .frame(height: videoHeight)
-            .background(Color.black)
-            .cornerRadius(8)
-            .clipped()
+        VStack(spacing: 4) {
+            ZStack(alignment: .bottom) {
+                VideoPlayerRepresentable(
+                    player: player.player,
+                    onKeyPress: { _ in },
+                    onClick: { player.togglePlayPause() }
+                )
+                .aspectRatio(player.aspectRatio, contentMode: .fit)
+                .frame(height: videoHeight)
+                .background(Color.black)
+                .cornerRadius(8)
+                .clipped()
 
-            // Basic playback controls
-            HStack(spacing: 12) {
-                Button(action: { player.togglePlayPause() }) {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 28, height: 28)
+                // Overlay: filename top-right, controls bottom
+                VStack {
+                    // Filename + remove button
+                    HStack {
+                        Spacer()
+                        if let url = appState.videoURL {
+                            HStack(spacing: 6) {
+                                Text(url.lastPathComponent)
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Button(action: { onClearVideo?() }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 14))
+                                }
+                                .buttonStyle(.plain)
+                                .help("Remove video")
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.6))
+                            .cornerRadius(6)
+                            .padding(6)
+                        }
+                    }
+
+                    Spacer()
+
+                    // Playback controls bar
+                    HStack(spacing: 8) {
+                        Button(action: { player.togglePlayPause() }) {
+                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Play/Pause")
+
+                        Button(action: { player.toggleMute() }) {
+                            Image(systemName: player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(player.isMuted ? .red : .white)
+                        }
+                        .buttonStyle(.plain)
+                        .help(player.isMuted ? "Unmute" : "Mute")
+
+                        Spacer()
+
+                        Text("\(player.formattedCurrentTime) / \(player.formattedDuration)")
+                            .font(.system(.caption2, design: .monospaced))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.black.opacity(0.5))
                 }
-                .buttonStyle(.bordered)
-                .help("Play/Pause")
-
-                Button(action: { player.toggleMute() }) {
-                    Image(systemName: player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .foregroundColor(player.isMuted ? .red : nil)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.bordered)
-                .help(player.isMuted ? "Unmute" : "Mute")
-
-                Spacer()
-
-                Text("\(player.formattedCurrentTime) / \(player.formattedDuration)")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.secondary)
             }
-            .padding(.horizontal, 4)
 
             // Extraction timeline preview (only show when duration is loaded)
             if appState.scenesDetected && player.duration > 0 {

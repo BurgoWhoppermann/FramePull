@@ -128,15 +128,65 @@ struct ManualMarkingView: View {
 
     private var videoPlayerSection: some View {
         VStack(spacing: 0) {
-            VideoPlayerRepresentable(
-                player: playerController.player,
-                onKeyPress: handleKeyPress,
-                onClick: { playerController.togglePlayPause() }
-            )
-            .aspectRatio(playerController.aspectRatio, contentMode: .fit)
-            .frame(height: videoPlayerHeight)
-            .background(Color.black)
-            .clipped()
+            ZStack(alignment: .bottom) {
+                VideoPlayerRepresentable(
+                    player: playerController.player,
+                    onKeyPress: handleKeyPress,
+                    onClick: { playerController.togglePlayPause() }
+                )
+                .aspectRatio(playerController.aspectRatio, contentMode: .fit)
+                .frame(height: videoPlayerHeight)
+                .background(Color.black)
+                .clipped()
+
+                // Overlay: filename top-right, playback controls bottom
+                VStack {
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 6) {
+                            Text(videoURL.lastPathComponent)
+                                .font(.caption2)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Button(action: {
+                                appState.videoURL = nil
+                                appState.clearSceneCache()
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 14))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove video")
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.black.opacity(0.6))
+                        .cornerRadius(6)
+                        .padding(6)
+                    }
+
+                    Spacer()
+
+                    // Playback info bar
+                    HStack(spacing: 8) {
+                        Image(systemName: playerController.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 12))
+                        if playerController.isMuted {
+                            Image(systemName: "speaker.slash.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(.red)
+                        }
+                        Spacer()
+                        Text("\(playerController.formattedCurrentTime) / \(playerController.formattedDuration)")
+                            .font(.system(.caption2, design: .monospaced))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.black.opacity(0.5))
+                }
+            }
 
             // Drag divider for resizing video player
             Rectangle()
@@ -175,30 +225,8 @@ struct ManualMarkingView: View {
 
     private var controlsBar: some View {
         VStack(spacing: 8) {
-            // Speed controls and time display
+            // Speed controls and marking info
             HStack {
-                // Play/Pause and Mute buttons
-                HStack(spacing: 4) {
-                    Button(action: { playerController.togglePlayPause() }) {
-                        Image(systemName: playerController.isPlaying ? "pause.fill" : "play.fill")
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Play/Pause (Space)")
-
-                    Button(action: { playerController.toggleMute() }) {
-                        Image(systemName: playerController.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .foregroundColor(playerController.isMuted ? .red : nil)
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.bordered)
-                    .help(playerController.isMuted ? "Unmute" : "Mute")
-                }
-
-                Divider()
-                    .frame(height: 20)
-                    .padding(.horizontal, 4)
-
                 // Speed buttons
                 HStack(spacing: 4) {
                     ForEach(MarkingState.PlaybackSpeed.allCases, id: \.self) { speed in
