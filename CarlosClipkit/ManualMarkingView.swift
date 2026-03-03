@@ -257,15 +257,14 @@ struct ManualMarkingView: View {
     private var videoPlayerSection: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .bottom) {
+                Color.black // fills the entire allocated height
+
                 VideoPlayerRepresentable(
                     player: playerController.player,
                     onKeyPress: handleKeyPress,
                     onClick: { playerController.togglePlayPause() }
                 )
                 .aspectRatio(playerController.aspectRatio, contentMode: .fit)
-                .frame(maxHeight: videoPlayerHeight)
-                .background(Color.black)
-                .clipped()
 
                 // Overlay: cut detection top-left, filename top-right, playback controls bottom
                 VStack {
@@ -367,17 +366,24 @@ struct ManualMarkingView: View {
 
                         Spacer()
 
-                        Text("\(playerController.formattedCurrentTime) / \(playerController.formattedDuration)")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.black.opacity(0.4))
-                            .cornerRadius(8)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Frame \(playerController.currentFrame)")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.8))
+                            Text("\(playerController.formattedCurrentTime) / \(playerController.formattedDuration)")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.4))
+                        .cornerRadius(8)
                     }
                     .padding(8)
                 }
             }
+            .frame(height: videoPlayerHeight)
+            .clipped()
 
             // Drag divider for resizing video player
             Rectangle()
@@ -403,7 +409,7 @@ struct ManualMarkingView: View {
                             if videoDragStartHeight == nil {
                                 videoDragStartHeight = videoPlayerHeight
                             }
-                            videoPlayerHeight = max(180, min(600, (videoDragStartHeight ?? 300) + value.translation.height))
+                            videoPlayerHeight = max(120, min(900, (videoDragStartHeight ?? 300) + value.translation.height))
                         }
                         .onEnded { _ in
                             videoDragStartHeight = nil
@@ -488,7 +494,7 @@ struct ManualMarkingView: View {
             ManualTimelineView(
                 duration: playerController.duration,
                 currentTime: playerController.currentTime,
-                onSeek: { playerController.seek(to: $0) },
+                onSeek: { playerController.scrub(to: $0) },
                 sceneCuts: markingState.detectedCuts,
                 markedStills: markingState.markedStills,
                 markedClips: markingState.markedClips,
@@ -1013,6 +1019,12 @@ struct ManualMarkingView: View {
             if let t = allTimestamps.first(where: { $0 > playerController.currentTime + 0.05 }) {
                 playerController.seek(to: t)
             }
+
+        case .skipFramesBack:
+            playerController.stepFrames(-10)
+
+        case .skipFramesForward:
+            playerController.stepFrames(10)
         }
     }
 

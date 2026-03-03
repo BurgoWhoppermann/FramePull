@@ -128,7 +128,7 @@ struct ClipkitApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
-                .frame(minWidth: 480, minHeight: 720)
+                .frame(minWidth: 480, minHeight: 480)
                 .onOpenURL { url in
                     appState.videoURL = url
                 }

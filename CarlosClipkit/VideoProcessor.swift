@@ -8,43 +8,7 @@ class VideoProcessor {
     // Number of candidate frames to sample when blur rejection is enabled
     private let blurCandidateCount = 10
 
-    /// Ensure a subdirectory exists and return its URL
-    private func ensureSubdirectory(_ base: URL, path: String) -> URL {
-        let subdir = base.appendingPathComponent(path)
-        try? FileManager.default.createDirectory(at: subdir, withIntermediateDirectories: true)
-        return subdir
-    }
-
-    /// Find the next available file index in a directory
-    /// Scans for files matching pattern like "videoname_still_001.jpg" and returns the next number
-    private func findNextAvailableIndex(in directory: URL, prefix: String, suffix: String) -> Int {
-        let fileManager = FileManager.default
-
-        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return 1
-        }
-
-        var maxIndex = 0
-        let pattern = "\(prefix)_"
-        let suffixLower = suffix.lowercased()
-
-        for file in files {
-            let filename = file.lastPathComponent
-            guard filename.hasPrefix(pattern) && filename.lowercased().hasSuffix(suffixLower) else {
-                continue
-            }
-
-            // Extract the number from filename like "videoname_still_001.jpg"
-            let withoutPrefix = String(filename.dropFirst(pattern.count))
-            let withoutSuffix = String(withoutPrefix.dropLast(suffix.count))
-
-            if let number = Int(withoutSuffix) {
-                maxIndex = max(maxIndex, number)
-            }
-        }
-
-        return maxIndex + 1
-    }
+    // Shared utilities are in ProcessingUtilities.swift
 
     enum ProcessingError: LocalizedError {
         case cannotLoadVideo
@@ -121,8 +85,8 @@ class VideoProcessor {
         let videoName = videoURL.deletingPathExtension().lastPathComponent
 
         // Find next available index (to append rather than overwrite)
-        let stillsDir = ensureSubdirectory(outputDirectory, path: "stills")
-        let startingIndex = findNextAvailableIndex(in: stillsDir, prefix: "\(videoName)_still", suffix: ".\(format.fileExtension)")
+        let stillsDir = ProcessingUtilities.ensureSubdirectory(outputDirectory, path: "stills")
+        let startingIndex = ProcessingUtilities.findNextAvailableIndex(in: stillsDir, prefix: "\(videoName)_still", suffix: ".\(format.fileExtension)")
 
         // Extract frames at the pre-refined timestamps
         var savedCount = 0
@@ -163,24 +127,16 @@ class VideoProcessor {
         format: StillFormat = .jpeg,
         subdirectory: String = "stills"
     ) throws {
-        let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        let bitmapRep = NSBitmapImageRep(cgImage: cgImage)
 
         let imageData: Data?
         switch format {
         case .jpeg:
-            guard let tiffData = nsImage.tiffRepresentation,
-                  let bitmapRep = NSBitmapImageRep(data: tiffData) else {
-                throw ProcessingError.cannotCreateImage
-            }
             imageData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9])
         case .png:
-            guard let tiffData = nsImage.tiffRepresentation,
-                  let bitmapRep = NSBitmapImageRep(data: tiffData) else {
-                throw ProcessingError.cannotCreateImage
-            }
             imageData = bitmapRep.representation(using: .png, properties: [:])
         case .tiff:
-            imageData = nsImage.tiffRepresentation
+            imageData = bitmapRep.tiffRepresentation
         }
 
         guard let data = imageData else {
@@ -188,7 +144,7 @@ class VideoProcessor {
         }
 
         // Save to the specified subdirectory (stills/, stills/4x5/, stills/9x16/)
-        let stillsDir = ensureSubdirectory(outputDirectory, path: subdirectory)
+        let stillsDir = ProcessingUtilities.ensureSubdirectory(outputDirectory, path: subdirectory)
         let filename = String(format: "%@_still_%03d.\(format.fileExtension)", videoName, index + 1)
         let fileURL = stillsDir.appendingPathComponent(filename)
 
@@ -369,12 +325,16 @@ class VideoProcessor {
                         bestFace = (time: t, sharpness: sharpness)
                     }
                 } catch {
+                    #if DEBUG
                     print("[Prefer Faces] Frame extraction failed at \(String(format: "%.2f", t))s: \(error.localizedDescription)")
+                    #endif
                     continue
                 }
             }
 
+            #if DEBUG
             print("[Prefer Faces] Scene \(index + 1): \(framesExtracted)/\(sampleCount) frames extracted, \(facesFound) faces found")
+            #endif
 
             if let best = bestFace {
                 results.append(best.time)
@@ -382,7 +342,9 @@ class VideoProcessor {
             // No face found → skip this scene
         }
 
+        #if DEBUG
         print("[Prefer Faces] Total: \(results.count) stills from \(scenes.count) scenes")
+        #endif
         progress(1.0, "Face search complete")
         return results.sorted()
     }
@@ -507,27 +469,7 @@ class VideoProcessor {
     ///   - timestamps: Array of exact timestamps to extract
     ///   - outputDirectory: Where to save the stills
     ///   - progress: Progress callback
-    /// Center-crop a CGImage to the specified aspect ratio
-    private func cropImageToAspectRatio(_ image: CGImage, targetRatio: CGFloat) -> CGImage {
-        let imageWidth = CGFloat(image.width)
-        let imageHeight = CGFloat(image.height)
-        let currentRatio = imageWidth / imageHeight
-
-        let cropRect: CGRect
-        if currentRatio > targetRatio {
-            // Image is wider than target — crop sides
-            let newWidth = imageHeight * targetRatio
-            let xOffset = (imageWidth - newWidth) / 2
-            cropRect = CGRect(x: xOffset, y: 0, width: newWidth, height: imageHeight)
-        } else {
-            // Image is taller than target — crop top/bottom
-            let newHeight = imageWidth / targetRatio
-            let yOffset = (imageHeight - newHeight) / 2
-            cropRect = CGRect(x: 0, y: yOffset, width: imageWidth, height: newHeight)
-        }
-
-        return image.cropping(to: cropRect) ?? image
-    }
+    // cropImageToAspectRatio is in ProcessingUtilities.swift
 
     func extractStillsAtTimestamps(
         from videoURL: URL,
@@ -574,13 +516,13 @@ class VideoProcessor {
 
                 // Save 4:5 crop variant
                 if export4x5 {
-                    let cropped = cropImageToAspectRatio(cgImage, targetRatio: 4.0 / 5.0)
+                    let cropped = ProcessingUtilities.cropImageToAspectRatio(cgImage, targetRatio: 4.0 / 5.0)
                     try saveFrame(cropped, index: index, videoName: videoName, outputDirectory: outputDirectory, format: format, subdirectory: "stills/4x5")
                 }
 
                 // Save 9:16 crop variant
                 if export9x16 {
-                    let cropped = cropImageToAspectRatio(cgImage, targetRatio: 9.0 / 16.0)
+                    let cropped = ProcessingUtilities.cropImageToAspectRatio(cgImage, targetRatio: 9.0 / 16.0)
                     try saveFrame(cropped, index: index, videoName: videoName, outputDirectory: outputDirectory, format: format, subdirectory: "stills/9x16")
                 }
             } catch {

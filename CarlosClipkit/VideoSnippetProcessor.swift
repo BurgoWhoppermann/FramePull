@@ -1,45 +1,10 @@
 import Foundation
 import AVFoundation
 import UniformTypeIdentifiers
-import ImageIO
 
 class VideoSnippetProcessor {
 
-    /// Ensure a subdirectory exists and return its URL
-    private func ensureSubdirectory(_ base: URL, path: String) -> URL {
-        let subdir = base.appendingPathComponent(path)
-        try? FileManager.default.createDirectory(at: subdir, withIntermediateDirectories: true)
-        return subdir
-    }
-
-    /// Find the next available file index in a directory
-    private func findNextAvailableIndex(in directory: URL, prefix: String, suffix: String) -> Int {
-        let fileManager = FileManager.default
-
-        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return 1
-        }
-
-        var maxIndex = 0
-        let pattern = "\(prefix)_"
-        let suffixLower = suffix.lowercased()
-
-        for file in files {
-            let filename = file.lastPathComponent
-            guard filename.hasPrefix(pattern) && filename.lowercased().hasSuffix(suffixLower) else {
-                continue
-            }
-
-            let withoutPrefix = String(filename.dropFirst(pattern.count))
-            let withoutSuffix = String(withoutPrefix.dropLast(suffix.count))
-
-            if let number = Int(withoutSuffix) {
-                maxIndex = max(maxIndex, number)
-            }
-        }
-
-        return maxIndex + 1
-    }
+    // Shared utilities (ensureSubdirectory, findNextAvailableIndex, resizeImage, cropImageToAspectRatio) are in ProcessingUtilities.swift
 
     enum SnippetError: LocalizedError {
         case cannotLoadVideo
@@ -85,10 +50,10 @@ class VideoSnippetProcessor {
         let totalCount = clipSpecs.count
 
         // Create videos subdirectory
-        let videosDir = ensureSubdirectory(outputDirectory, path: "videos")
+        let videosDir = ProcessingUtilities.ensureSubdirectory(outputDirectory, path: "videos")
 
         // Find next available index (to append rather than overwrite)
-        let startingIndex = findNextAvailableIndex(in: videosDir, prefix: "\(videoName)_clip", suffix: ".\(format.fileType)")
+        let startingIndex = ProcessingUtilities.findNextAvailableIndex(in: videosDir, prefix: "\(videoName)_clip", suffix: ".\(format.fileType)")
 
         for (clipIndex, spec) in clipSpecs.enumerated() {
             let clipProgress = Double(clipIndex) / Double(totalCount)
@@ -109,7 +74,7 @@ class VideoSnippetProcessor {
 
             // Export 4:5 cropped version if requested
             if export4x5 {
-                let videos4x5Dir = ensureSubdirectory(videosDir, path: "4x5")
+                let videos4x5Dir = ProcessingUtilities.ensureSubdirectory(videosDir, path: "4x5")
                 let filename4x5 = String(format: "%@_clip_%03d.%@", videoName, fileNumber, format.fileType)
                 let fileURL4x5 = videos4x5Dir.appendingPathComponent(filename4x5)
 
@@ -126,7 +91,7 @@ class VideoSnippetProcessor {
 
             // Export 9:16 cropped version if requested
             if export9x16 {
-                let videos9x16Dir = ensureSubdirectory(videosDir, path: "9x16")
+                let videos9x16Dir = ProcessingUtilities.ensureSubdirectory(videosDir, path: "9x16")
                 let filename9x16 = String(format: "%@_clip_%03d.%@", videoName, fileNumber, format.fileType)
                 let fileURL9x16 = videos9x16Dir.appendingPathComponent(filename9x16)
 
@@ -232,12 +197,12 @@ class VideoSnippetProcessor {
         let videoName = videoURL.deletingPathExtension().lastPathComponent
 
         // Create subdirectories only when needed
-        let videosDir = exportMP4 ? ensureSubdirectory(outputDirectory, path: "videos") : outputDirectory
-        let gifsDir = exportGIF ? ensureSubdirectory(outputDirectory, path: "gifs") : outputDirectory
+        let videosDir = exportMP4 ? ProcessingUtilities.ensureSubdirectory(outputDirectory, path: "videos") : outputDirectory
+        let gifsDir = exportGIF ? ProcessingUtilities.ensureSubdirectory(outputDirectory, path: "gifs") : outputDirectory
 
         // Find next available index for consistent numbering
-        let clipIndex = exportMP4 ? findNextAvailableIndex(in: videosDir, prefix: "\(videoName)_clip", suffix: ".\(format.fileType)") : 1
-        let gifIndex = exportGIF ? findNextAvailableIndex(in: gifsDir, prefix: "\(videoName)_clip", suffix: ".gif") : 1
+        let clipIndex = exportMP4 ? ProcessingUtilities.findNextAvailableIndex(in: videosDir, prefix: "\(videoName)_clip", suffix: ".\(format.fileType)") : 1
+        let gifIndex = exportGIF ? ProcessingUtilities.findNextAvailableIndex(in: gifsDir, prefix: "\(videoName)_clip", suffix: ".gif") : 1
         let fileNumber = max(clipIndex, gifIndex)
 
         // Export original video clip
@@ -274,7 +239,7 @@ class VideoSnippetProcessor {
         // Export cropped versions if requested
         if export4x5 {
             if exportMP4 {
-                let videos4x5Dir = ensureSubdirectory(videosDir, path: "4x5")
+                let videos4x5Dir = ProcessingUtilities.ensureSubdirectory(videosDir, path: "4x5")
                 let crop4x5ClipFilename = String(format: "%@_clip_%03d.%@", videoName, fileNumber, format.fileType)
                 let crop4x5ClipURL = videos4x5Dir.appendingPathComponent(crop4x5ClipFilename)
 
@@ -290,11 +255,11 @@ class VideoSnippetProcessor {
             }
 
             if exportGIF {
-                let gifs4x5Dir = ensureSubdirectory(gifsDir, path: "4x5")
+                let gifs4x5Dir = ProcessingUtilities.ensureSubdirectory(gifsDir, path: "4x5")
                 let crop4x5GifFilename = String(format: "%@_clip_%03d.gif", videoName, fileNumber)
                 let crop4x5GifURL = gifs4x5Dir.appendingPathComponent(crop4x5GifFilename)
 
-                try await createCroppedGIF(
+                try await createGIF(
                     from: asset,
                     startTime: startTime,
                     duration: duration,
@@ -309,7 +274,7 @@ class VideoSnippetProcessor {
 
         if export9x16 {
             if exportMP4 {
-                let videos9x16Dir = ensureSubdirectory(videosDir, path: "9x16")
+                let videos9x16Dir = ProcessingUtilities.ensureSubdirectory(videosDir, path: "9x16")
                 let crop9x16ClipFilename = String(format: "%@_clip_%03d.%@", videoName, fileNumber, format.fileType)
                 let crop9x16ClipURL = videos9x16Dir.appendingPathComponent(crop9x16ClipFilename)
 
@@ -325,11 +290,11 @@ class VideoSnippetProcessor {
             }
 
             if exportGIF {
-                let gifs9x16Dir = ensureSubdirectory(gifsDir, path: "9x16")
+                let gifs9x16Dir = ProcessingUtilities.ensureSubdirectory(gifsDir, path: "9x16")
                 let crop9x16GifFilename = String(format: "%@_clip_%03d.gif", videoName, fileNumber)
                 let crop9x16GifURL = gifs9x16Dir.appendingPathComponent(crop9x16GifFilename)
 
-                try await createCroppedGIF(
+                try await createGIF(
                     from: asset,
                     startTime: startTime,
                     duration: duration,
@@ -452,93 +417,7 @@ class VideoSnippetProcessor {
         }
     }
 
-    /// Create a cropped GIF with specified aspect ratio (center crop)
-    private func createCroppedGIF(
-        from asset: AVURLAsset,
-        startTime: Double,
-        duration: Double,
-        frameRate: Int,
-        maxWidth: Int,
-        quality: Double = 0.7,
-        aspectRatio: AspectRatioCrop,
-        outputURL: URL
-    ) async throws {
-        let frameCount = Int(duration * Double(frameRate))
-        let frameInterval = duration / Double(frameCount)
-        let delayTime = 1.0 / Double(frameRate)
-
-        let imageGenerator = AVAssetImageGenerator(asset: asset)
-        imageGenerator.appliesPreferredTrackTransform = true
-        imageGenerator.requestedTimeToleranceBefore = CMTime(seconds: 0.02, preferredTimescale: 600)
-        imageGenerator.requestedTimeToleranceAfter = CMTime(seconds: 0.02, preferredTimescale: 600)
-        defer { imageGenerator.cancelAllCGImageGeneration() }
-
-        guard let destination = CGImageDestinationCreateWithURL(
-            outputURL as CFURL,
-            UTType.gif.identifier as CFString,
-            frameCount,
-            nil
-        ) else {
-            throw SnippetError.exportFailed("Cannot create GIF destination")
-        }
-
-        let gifProperties: [String: Any] = [
-            kCGImagePropertyGIFDictionary as String: [
-                kCGImagePropertyGIFLoopCount as String: 0
-            ]
-        ]
-        CGImageDestinationSetProperties(destination, gifProperties as CFDictionary)
-
-        let frameProperties: [String: Any] = [
-            kCGImagePropertyGIFDictionary as String: [
-                kCGImagePropertyGIFDelayTime as String: delayTime
-            ],
-            kCGImageDestinationLossyCompressionQuality as String: quality
-        ]
-
-        for frameIndex in 0..<frameCount {
-            let frameTime = startTime + (Double(frameIndex) * frameInterval)
-            let time = CMTime(seconds: frameTime, preferredTimescale: 600)
-
-            do {
-                let (cgImage, _) = try await imageGenerator.image(at: time)
-                let croppedImage = cropImageToAspectRatio(cgImage, aspectRatio: aspectRatio)
-                let outputImage = resizeImage(croppedImage, maxWidth: maxWidth)
-                CGImageDestinationAddImage(destination, outputImage, frameProperties as CFDictionary)
-            } catch {
-                throw SnippetError.exportFailed("Cannot extract frame at \(frameTime)s")
-            }
-        }
-
-        guard CGImageDestinationFinalize(destination) else {
-            throw SnippetError.exportFailed("Cannot finalize GIF")
-        }
-    }
-
-    /// Center-crop an image to the specified aspect ratio
-    private func cropImageToAspectRatio(_ image: CGImage, aspectRatio: AspectRatioCrop) -> CGImage {
-        let imageWidth = CGFloat(image.width)
-        let imageHeight = CGFloat(image.height)
-        let targetRatio = aspectRatio.ratio
-        let currentRatio = imageWidth / imageHeight
-
-        let cropRect: CGRect
-        if currentRatio > targetRatio {
-            // Image is wider than target - crop sides
-            let newWidth = imageHeight * targetRatio
-            let xOffset = (imageWidth - newWidth) / 2
-            cropRect = CGRect(x: xOffset, y: 0, width: newWidth, height: imageHeight)
-        } else {
-            // Image is taller than target - crop top/bottom
-            let newHeight = imageWidth / targetRatio
-            let yOffset = (imageHeight - newHeight) / 2
-            cropRect = CGRect(x: 0, y: yOffset, width: imageWidth, height: newHeight)
-        }
-
-        return image.cropping(to: cropRect) ?? image
-    }
-
-    /// Create a GIF from video
+    /// Create a GIF from video, with optional aspect ratio cropping
     private func createGIF(
         from asset: AVURLAsset,
         startTime: Double,
@@ -546,6 +425,7 @@ class VideoSnippetProcessor {
         frameRate: Int,
         maxWidth: Int,
         quality: Double = 0.7,
+        aspectRatio: AspectRatioCrop? = nil,
         outputURL: URL
     ) async throws {
         let frameCount = Int(duration * Double(frameRate))
@@ -587,7 +467,8 @@ class VideoSnippetProcessor {
 
             do {
                 let (cgImage, _) = try await imageGenerator.image(at: time)
-                let outputImage = resizeImage(cgImage, maxWidth: maxWidth)
+                let cropped = aspectRatio.map { ProcessingUtilities.cropImageToAspectRatio(cgImage, targetRatio: $0.ratio) } ?? cgImage
+                let outputImage = ProcessingUtilities.resizeImage(cropped, maxWidth: maxWidth)
                 CGImageDestinationAddImage(destination, outputImage, frameProperties as CFDictionary)
             } catch {
                 throw SnippetError.exportFailed("Cannot extract frame at \(frameTime)s")
@@ -597,37 +478,5 @@ class VideoSnippetProcessor {
         guard CGImageDestinationFinalize(destination) else {
             throw SnippetError.exportFailed("Cannot finalize GIF")
         }
-    }
-
-    /// Resize an image to fit within maxWidth
-    private func resizeImage(_ image: CGImage, maxWidth: Int) -> CGImage {
-        let originalWidth = image.width
-        let originalHeight = image.height
-
-        guard originalWidth > maxWidth else {
-            return image
-        }
-
-        let scale = Double(maxWidth) / Double(originalWidth)
-        let newWidth = maxWidth
-        let newHeight = Int(Double(originalHeight) * scale)
-
-        guard let colorSpace = image.colorSpace,
-              let context = CGContext(
-                data: nil,
-                width: newWidth,
-                height: newHeight,
-                bitsPerComponent: 8,
-                bytesPerRow: 0,
-                space: colorSpace,
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              ) else {
-            return image
-        }
-
-        context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
-
-        return context.makeImage() ?? image
     }
 }

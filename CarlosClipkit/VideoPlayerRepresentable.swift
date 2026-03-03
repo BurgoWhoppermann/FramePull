@@ -18,6 +18,8 @@ struct VideoPlayerRepresentable: NSViewRepresentable {
         case delete         // Delete / Backspace
         case jumpToPreviousMarker  // ↑ arrow
         case jumpToNextMarker      // ↓ arrow
+        case skipFramesBack        // Shift+← arrow (−10 frames)
+        case skipFramesForward     // Shift+→ arrow (+10 frames)
     }
 
     func makeNSView(context: Context) -> KeyCapturePlayerView {
@@ -62,7 +64,14 @@ class KeyCapturePlayerView: AVPlayerView {
 
     // Arrow keys are intercepted by AVPlayerView's performKeyEquivalent before keyDown
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.keyCode == 126 { // Up arrow → previous marker
+        // Shift+Left/Right → skip ±10 frames (must check before fallthrough to super)
+        if event.keyCode == 123 && event.modifierFlags.contains(.shift) {
+            keyPressHandler?(.skipFramesBack)
+            return true
+        } else if event.keyCode == 124 && event.modifierFlags.contains(.shift) {
+            keyPressHandler?(.skipFramesForward)
+            return true
+        } else if event.keyCode == 126 { // Up arrow → previous marker
             keyPressHandler?(.jumpToPreviousMarker)
             return true
         } else if event.keyCode == 125 { // Down arrow → next marker
@@ -136,6 +145,7 @@ class LoopingPlayerController: ObservableObject {
     }
 
     deinit {
+        player.pause()
         if let observer = loopObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -150,15 +160,17 @@ class LoopingPlayerController: ObservableObject {
             object: player.currentItem,
             queue: .main
         ) { [weak self] _ in
-            self?.player.seek(to: .zero)
-            self?.player.play()
+            guard let self, self.isPlaying else { return }
+            self.player.seek(to: .zero)
+            self.player.play()
         }
     }
 
     private func setupTimeObserver() {
         let interval = CMTime(seconds: 0.05, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            self?.currentTime = CMTimeGetSeconds(time)
+            guard let self, !self.isScrubbing else { return }
+            self.currentTime = CMTimeGetSeconds(time)
         }
     }
 
@@ -263,6 +275,47 @@ class LoopingPlayerController: ObservableObject {
     func seek(to time: Double) {
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
         player.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    func stepFrames(_ count: Int) {
+        let frameDuration = 1.0 / 25.0
+        let newTime = max(0, min(duration, currentTime + Double(count) * frameDuration))
+        seek(to: newTime)
+    }
+
+    // MARK: - Scrubbing (approximate, throttled — for timeline/marker drags)
+
+    private var pendingSeek: Double? = nil
+    private var isSeeking = false
+    private var isScrubbing = false
+
+    func scrub(to time: Double) {
+        // Instant playhead feedback — timeline tracks the drag immediately
+        currentTime = time
+        isScrubbing = true
+
+        guard !isSeeking else {
+            pendingSeek = time
+            return
+        }
+        isSeeking = true
+        let cmTime = CMTime(seconds: time, preferredTimescale: 600)
+        let tolerance = CMTime(seconds: 0.05, preferredTimescale: 600)
+        player.seek(to: cmTime, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] _ in
+            guard let self else { return }
+            if let pending = self.pendingSeek {
+                self.pendingSeek = nil
+                self.isSeeking = false
+                self.scrub(to: pending)
+            } else {
+                self.isSeeking = false
+                self.isScrubbing = false
+            }
+        }
+    }
+
+    var currentFrame: Int {
+        Int(currentTime * 25) + 1
     }
 
     var formattedCurrentTime: String {

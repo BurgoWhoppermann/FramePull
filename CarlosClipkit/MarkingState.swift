@@ -104,7 +104,7 @@ class MarkingState: ObservableObject {
         }
     }
 
-    private let frameDuration: Double = 1.0 / 30.0
+    private let frameDuration: Double = 1.0 / 25.0
 
     // MARK: - Undo
 
@@ -118,7 +118,13 @@ class MarkingState: ObservableObject {
         case clearedAll(stills: [MarkedStill], clips: [MarkedClip])
     }
 
-    @Published var undoStack: [UndoAction] = []
+    @Published var undoStack: [UndoAction] = [] {
+        didSet {
+            if undoStack.count > 50 {
+                undoStack.removeFirst(undoStack.count - 50)
+            }
+        }
+    }
     var canUndo: Bool { !undoStack.isEmpty }
 
     /// Pop the last action and apply the inverse

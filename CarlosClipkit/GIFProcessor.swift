@@ -6,41 +6,7 @@ import UniformTypeIdentifiers
 
 class GIFProcessor {
 
-    /// Ensure a subdirectory exists and return its URL
-    private func ensureSubdirectory(_ base: URL, path: String) -> URL {
-        let subdir = base.appendingPathComponent(path)
-        try? FileManager.default.createDirectory(at: subdir, withIntermediateDirectories: true)
-        return subdir
-    }
-
-    /// Find the next available file index in a directory
-    private func findNextAvailableIndex(in directory: URL, prefix: String, suffix: String) -> Int {
-        let fileManager = FileManager.default
-
-        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return 1
-        }
-
-        var maxIndex = 0
-        let pattern = "\(prefix)_"
-        let suffixLower = suffix.lowercased()
-
-        for file in files {
-            let filename = file.lastPathComponent
-            guard filename.hasPrefix(pattern) && filename.lowercased().hasSuffix(suffixLower) else {
-                continue
-            }
-
-            let withoutPrefix = String(filename.dropFirst(pattern.count))
-            let withoutSuffix = String(withoutPrefix.dropLast(suffix.count))
-
-            if let number = Int(withoutSuffix) {
-                maxIndex = max(maxIndex, number)
-            }
-        }
-
-        return maxIndex + 1
-    }
+    // Shared utilities (ensureSubdirectory, findNextAvailableIndex, resizeImage) are in ProcessingUtilities.swift
 
     enum GIFError: LocalizedError {
         case cannotLoadVideo
@@ -89,10 +55,10 @@ class GIFProcessor {
         let totalCount = gifSpecs.count
 
         // Create gifs subdirectory
-        let gifsDir = ensureSubdirectory(outputDirectory, path: "gifs")
+        let gifsDir = ProcessingUtilities.ensureSubdirectory(outputDirectory, path: "gifs")
 
         // Find next available index (to append rather than overwrite)
-        let startingIndex = findNextAvailableIndex(in: gifsDir, prefix: "\(videoName)_gif", suffix: ".gif")
+        let startingIndex = ProcessingUtilities.findNextAvailableIndex(in: gifsDir, prefix: "\(videoName)_gif", suffix: ".gif")
 
         for (gifIndex, spec) in gifSpecs.enumerated() {
             let gifProgress = Double(gifIndex) / Double(totalCount)
@@ -176,7 +142,7 @@ class GIFProcessor {
             do {
                 let (cgImage, _) = try await imageGenerator.image(at: time)
 
-                let outputImage = resizeImage(cgImage, maxWidth: maxWidth)
+                let outputImage = ProcessingUtilities.resizeImage(cgImage, maxWidth: maxWidth)
 
                 CGImageDestinationAddImage(destination, outputImage, frameProperties as CFDictionary)
             } catch {
@@ -188,37 +154,6 @@ class GIFProcessor {
         guard CGImageDestinationFinalize(destination) else {
             throw GIFError.cannotFinalizeGIF
         }
-    }
-
-    private func resizeImage(_ image: CGImage, maxWidth: Int) -> CGImage {
-        let originalWidth = image.width
-        let originalHeight = image.height
-
-        guard originalWidth > maxWidth else {
-            return image
-        }
-
-        let scale = Double(maxWidth) / Double(originalWidth)
-        let newWidth = maxWidth
-        let newHeight = Int(Double(originalHeight) * scale)
-
-        guard let colorSpace = image.colorSpace,
-              let context = CGContext(
-                data: nil,
-                width: newWidth,
-                height: newHeight,
-                bitsPerComponent: 8,
-                bytesPerRow: 0,
-                space: colorSpace,
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              ) else {
-            return image
-        }
-
-        context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
-
-        return context.makeImage() ?? image
     }
 
 }
