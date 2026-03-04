@@ -1,6 +1,12 @@
 import SwiftUI
 import AVFoundation
 
+enum ActiveMarker: Equatable {
+    case still(UUID)
+    case clipInPoint(UUID)
+    case clipOutPoint(UUID)
+}
+
 struct ManualMarkingView: View {
     let videoURL: URL
 
@@ -27,7 +33,24 @@ struct ManualMarkingView: View {
     @State private var videoDragStartHeight: CGFloat? = nil
     @State private var showVolumeSlider = false
     @State private var showCutDetectionPopover = false
-    @State private var selectedStillId: UUID? = nil
+    private var activeMarker: ActiveMarker? {
+        let tolerance = 0.05
+        let time = playerController.currentTime
+        if let still = markingState.markedStills.first(where: { abs($0.timestamp - time) < tolerance }) {
+            return .still(still.id)
+        }
+        if let clip = markingState.markedClips.first(where: { abs($0.inPoint - time) < tolerance }) {
+            return .clipInPoint(clip.id)
+        }
+        if let clip = markingState.markedClips.first(where: { abs($0.outPoint - time) < tolerance }) {
+            return .clipOutPoint(clip.id)
+        }
+        return nil
+    }
+    private var selectedStillId: UUID? {
+        if case .still(let id) = activeMarker { return id }
+        return nil
+    }
     @State private var isCutDetectionHovered = false
     @State private var faceRefinementTask: Task<Void, Never>? = nil
     @State private var hasGenerated = false
@@ -504,15 +527,12 @@ struct ManualMarkingView: View {
                 },
                 onStillRemoved: { id in
                     markingState.removeStill(id: id)
-                    if selectedStillId == id { selectedStillId = nil }
                 },
                 onClipRangeChanged: { id, newIn, newOut in
                     markingState.updateClipRange(id: id, inPoint: newIn, outPoint: newOut, snapEnabled: appState.snapToSceneCuts)
                 },
                 selectedStillId: selectedStillId,
-                onStillSelected: { id in
-                    selectedStillId = id
-                }
+                activeMarker: activeMarker
             )
         }
         .padding(.horizontal)
@@ -997,9 +1017,15 @@ struct ManualMarkingView: View {
             markingState.undo()
 
         case .delete:
-            if let id = selectedStillId {
+            switch activeMarker {
+            case .still(let id):
                 markingState.removeStill(id: id)
-                selectedStillId = nil
+            case .clipInPoint(let id):
+                markingState.removeClip(id: id)
+            case .clipOutPoint(let id):
+                markingState.removeClipOutPoint(id: id)
+            case nil:
+                break
             }
 
         case .jumpToPreviousMarker:
@@ -1208,7 +1234,7 @@ struct ManualTimelineView: View {
     let onStillRemoved: (UUID) -> Void
     let onClipRangeChanged: (UUID, Double?, Double?) -> Void
     var selectedStillId: UUID? = nil
-    var onStillSelected: ((UUID?) -> Void)? = nil
+    var activeMarker: ActiveMarker? = nil
 
     // Drag state (separate offsets prevent clip operations from leaking into still drags)
     @State private var draggingStillId: UUID? = nil
@@ -1275,14 +1301,16 @@ struct ManualTimelineView: View {
                         .position(x: displayInX + clipWidth / 2, y: 22)
 
                     // In point handle (left edge)
+                    let isInActive = activeMarker == .clipInPoint(clip.id)
                     let isInHovered = hoveredClipEdge?.0 == clip.id && hoveredClipEdge?.1 == .inPoint
-                    let inHandleWidth: CGFloat = isInHovered ? 8 : 6
-                    let inHandleHeight: CGFloat = isInHovered ? 34 : 30
+                    let inHandleWidth: CGFloat = isInActive ? 10 : (isInHovered ? 8 : 6)
+                    let inHandleHeight: CGFloat = isInActive ? 36 : (isInHovered ? 34 : 30)
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(clipColor)
+                        .fill(isInActive ? Color.white : clipColor)
                         .frame(width: inHandleWidth, height: inHandleHeight)
-                        .shadow(color: isInHovered ? clipColor.opacity(0.6) : .clear, radius: 4)
+                        .shadow(color: isInActive ? Color.white.opacity(0.6) : (isInHovered ? clipColor.opacity(0.6) : .clear), radius: isInActive ? 6 : 4)
                         .animation(.easeInOut(duration: 0.15), value: isInHovered)
+                        .animation(.easeInOut(duration: 0.15), value: isInActive)
                         .frame(width: 20, height: 44)
                         .contentShape(Rectangle())
                         .onHover { hovering in
@@ -1319,14 +1347,16 @@ struct ManualTimelineView: View {
                         .zIndex(isDragging && draggingClipEdge == .inPoint ? 50 : 5)
 
                     // Out point handle (right edge)
+                    let isOutActive = activeMarker == .clipOutPoint(clip.id)
                     let isOutHovered = hoveredClipEdge?.0 == clip.id && hoveredClipEdge?.1 == .outPoint
-                    let outHandleWidth: CGFloat = isOutHovered ? 8 : 6
-                    let outHandleHeight: CGFloat = isOutHovered ? 34 : 30
+                    let outHandleWidth: CGFloat = isOutActive ? 10 : (isOutHovered ? 8 : 6)
+                    let outHandleHeight: CGFloat = isOutActive ? 36 : (isOutHovered ? 34 : 30)
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(clipColor)
+                        .fill(isOutActive ? Color.white : clipColor)
                         .frame(width: outHandleWidth, height: outHandleHeight)
-                        .shadow(color: isOutHovered ? clipColor.opacity(0.6) : .clear, radius: 4)
+                        .shadow(color: isOutActive ? Color.white.opacity(0.6) : (isOutHovered ? clipColor.opacity(0.6) : .clear), radius: isOutActive ? 6 : 4)
                         .animation(.easeInOut(duration: 0.15), value: isOutHovered)
+                        .animation(.easeInOut(duration: 0.15), value: isOutActive)
                         .frame(width: 20, height: 44)
                         .contentShape(Rectangle())
                         .onHover { hovering in
@@ -1465,13 +1495,10 @@ struct ManualTimelineView: View {
                             isDragging = true
                         }
 
-                        if !isDragging, let snapId = nearestStillId(at: x, width: width) {
-                            onStillSelected?(snapId)
-                            if let still = markedStills.first(where: { $0.id == snapId }) {
-                                onSeek(still.timestamp)
-                            }
+                        if !isDragging, let snapId = nearestStillId(at: x, width: width),
+                           let still = markedStills.first(where: { $0.id == snapId }) {
+                            onSeek(still.timestamp)
                         } else {
-                            if isDragging { onStillSelected?(nil) }
                             let newTime = (Double(x) / Double(width)) * duration
                             onSeek(max(0, min(duration, newTime)))
                         }

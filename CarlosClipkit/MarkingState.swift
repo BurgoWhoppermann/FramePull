@@ -225,6 +225,14 @@ class MarkingState: ObservableObject {
         markedClips.removeAll { $0.id == id }
     }
 
+    /// Remove a clip's out-point, reverting the in-point to pendingInPoint
+    func removeClipOutPoint(id: UUID) {
+        guard let clip = markedClips.first(where: { $0.id == id }) else { return }
+        undoStack.append(.removedClip(clip))
+        markedClips.removeAll { $0.id == id }
+        pendingInPoint = clip.inPoint
+    }
+
     /// Clear all marks
     func clearAll() {
         if hasMarkedItems {
