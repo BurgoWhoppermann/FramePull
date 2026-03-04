@@ -34,12 +34,12 @@ enum GIFResolution: String, CaseIterable {
         }
     }
 
-    /// Estimate GIF file size in bytes for a given frame rate and clip duration
-    func estimatedSize(frameRate: Int, clipDuration: Double) -> Int {
+    /// Estimate GIF file size in bytes for a given frame rate, clip duration, and quality
+    func estimatedSize(frameRate: Int, clipDuration: Double, quality: Double = 0.7) -> Int {
         let w = Double(maxWidth)
         let h = w * 9.0 / 16.0  // Assume 16:9 source
         let frameCount = Double(frameRate) * clipDuration
-        return Int(w * h * 0.3 * frameCount)
+        return Int(w * h * 0.3 * quality * frameCount)
     }
 }
 
@@ -166,7 +166,7 @@ class AppState: ObservableObject {
 
     // Format toggles for Clips (user can select any combination)
     @Published var exportGIF: Bool = true
-    @Published var exportMP4: Bool = false
+    @Published var exportMP4: Bool = true
     // Computed convenience properties
     var exportStills: Bool { exportStillsEnabled }
     var exportGIFs: Bool { exportMovingClipsEnabled && exportGIF }
@@ -184,15 +184,14 @@ class AppState: ObservableObject {
     @Published var stillPlacement: StillPlacement = .spreadEvenly
 
     // Moving clips settings (unified for GIF + video)
-    @Published var clipDuration: Double = 5.0
+    @Published var scenesPerClip: Int = 3
     @Published var clipCount: Int = 5
-    @Published var avoidCrossingScenes: Bool = false
     @Published var allowOverlapping: Bool = false
     @Published var gifFrameRate: Int = 15
     @Published var gifResolution: GIFResolution = .small
     @Published var gifQuality: Double = 0.7
     @Published var clipFormat: OutputFormat = .mp4
-    @Published var clipQuality: ClipQuality = .source
+    @Published var clipQuality: ClipQuality = .fullHD
 
     // Aspect ratio exports (for both GIFs and Clips)
     @Published var export4x5: Bool = false
@@ -218,7 +217,7 @@ class AppState: ObservableObject {
     @Published var videoDuration: Double = 0
 
     // Snap clip in/out points to nearest scene cut
-    @Published var snapToSceneCuts: Bool = false
+    @Published var snapToSceneCuts: Bool = true
 
     init() {
         // Throttle forwarding to max 10Hz — prevents 20Hz time observer from causing
@@ -381,19 +380,18 @@ class AppState: ObservableObject {
         exportStillsEnabled = true
         exportMovingClipsEnabled = true
         exportGIF = true
-        exportMP4 = false
+        exportMP4 = true
         stillCount = 10
         stillFormat = .jpeg
         stillSize = .full
         stillPlacement = .spreadEvenly
-        clipDuration = 5.0
+        scenesPerClip = 3
         clipCount = 5
-        avoidCrossingScenes = false
         allowOverlapping = false
         gifFrameRate = 15
         gifResolution = .small
         clipFormat = .mp4
-        clipQuality = .source
+        clipQuality = .fullHD
         export4x5 = false
         export9x16 = false
         detectionThreshold = 0.35

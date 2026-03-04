@@ -7,6 +7,21 @@ struct BetaSplashView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Close button
+            HStack {
+                Spacer()
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 10)
+                .padding(.trailing, 10)
+            }
+
             // Header
             VStack(spacing: 8) {
                 if let icon = NSApplication.shared.applicationIconImage {
@@ -31,7 +46,7 @@ struct BetaSplashView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            .padding(.top, 24)
+            .padding(.top, 0)
             .padding(.bottom, 16)
 
             Divider()
@@ -97,6 +112,32 @@ struct BetaSplashView: View {
             .padding(20)
         }
         .frame(width: 380, height: 500)
+        .background(KeyDismissHandler(onDismiss: onDismiss))
+    }
+
+    /// Invisible NSView that captures key events to dismiss the splash
+    private struct KeyDismissHandler: NSViewRepresentable {
+        let onDismiss: () -> Void
+        func makeNSView(context: Context) -> KeyCaptureView {
+            let view = KeyCaptureView()
+            view.onKeyDown = onDismiss
+            DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
+            return view
+        }
+        func updateNSView(_ nsView: KeyCaptureView, context: Context) {}
+
+        class KeyCaptureView: NSView {
+            var onKeyDown: (() -> Void)?
+            override var acceptsFirstResponder: Bool { true }
+            override func keyDown(with event: NSEvent) {
+                // Return(36), Space(49), Escape(53)
+                if event.keyCode == 36 || event.keyCode == 49 || event.keyCode == 53 {
+                    onKeyDown?()
+                } else {
+                    super.keyDown(with: event)
+                }
+            }
+        }
     }
 
     private func changeGroup(_ title: String, items: [String]) -> some View {

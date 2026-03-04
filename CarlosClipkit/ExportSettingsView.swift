@@ -258,9 +258,13 @@ struct ExportSettingsView: View {
     }
 
     private var gifSizeEstimate: String {
+        let avgDuration = appState.markingState.markedClips.isEmpty
+            ? 5.0
+            : appState.markingState.markedClips.map { $0.duration }.reduce(0, +) / Double(appState.markingState.markedClips.count)
         let bytes = appState.gifResolution.estimatedSize(
             frameRate: appState.gifFrameRate,
-            clipDuration: appState.clipDuration
+            clipDuration: avgDuration,
+            quality: appState.gifQuality
         )
         let mb = Double(bytes) / 1_000_000.0
         if mb < 1.0 {

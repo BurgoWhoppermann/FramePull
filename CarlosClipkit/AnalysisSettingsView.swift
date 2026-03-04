@@ -135,20 +135,20 @@ struct AnalysisSettingsView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Text("Length")
+                    Text("Scenes")
                         .font(.subheadline)
                         .frame(width: 65, alignment: .leading)
-                    Slider(value: $appState.clipDuration, in: 1.0...30.0, step: 1.0)
+                    Slider(value: Binding(
+                        get: { Double(appState.scenesPerClip) },
+                        set: { appState.scenesPerClip = max(1, Int($0)) }
+                    ), in: 1...Double(max(2, appState.detectedScenes.count)), step: 1)
                         .tint(.clipkitBlue)
-                    Text("\(appState.clipDuration, specifier: "%.0f")s")
+                        .disabled(appState.detectedScenes.count <= 1)
+                    Text("\(appState.scenesPerClip)")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .frame(width: 24, alignment: .trailing)
                 }
-
-                Toggle("Avoid crossing cuts", isOn: $appState.avoidCrossingScenes)
-                    .toggleStyle(.checkbox)
-                    .font(.subheadline)
                 Toggle("Allow overlapping", isOn: $appState.allowOverlapping)
                     .toggleStyle(.checkbox)
                     .font(.subheadline)

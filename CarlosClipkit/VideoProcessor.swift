@@ -282,6 +282,7 @@ class VideoProcessor {
     func findBestFacePerScene(
         from videoURL: URL,
         scenes: [(start: Double, end: Double)],
+        countPerScene: Int = 1,
         progress: @escaping (Double, String) -> Void
     ) async -> [Double] {
         let asset = AVURLAsset(url: videoURL)
@@ -306,7 +307,7 @@ class VideoProcessor {
             let sampleCount = max(3, min(30, Int(duration / 0.3)))
             let step = duration / Double(sampleCount + 1)
 
-            var bestFace: (time: Double, sharpness: Double)? = nil
+            var faceCandidates: [(time: Double, sharpness: Double)] = []
             var framesExtracted = 0
             var facesFound = 0
 
@@ -321,9 +322,7 @@ class VideoProcessor {
                     guard hasFace(in: cgImage) else { continue }
                     facesFound += 1
                     let sharpness = computeSharpness(of: cgImage)
-                    if bestFace == nil || sharpness > bestFace!.sharpness {
-                        bestFace = (time: t, sharpness: sharpness)
-                    }
+                    faceCandidates.append((time: t, sharpness: sharpness))
                 } catch {
                     #if DEBUG
                     print("[Prefer Faces] Frame extraction failed at \(String(format: "%.2f", t))s: \(error.localizedDescription)")
@@ -336,10 +335,15 @@ class VideoProcessor {
             print("[Prefer Faces] Scene \(index + 1): \(framesExtracted)/\(sampleCount) frames extracted, \(facesFound) faces found")
             #endif
 
-            if let best = bestFace {
-                results.append(best.time)
+            // Take top N by sharpness, spaced at least 0.5s apart
+            let sorted = faceCandidates.sorted { $0.sharpness > $1.sharpness }
+            var picked: [Double] = []
+            for candidate in sorted {
+                if picked.count >= countPerScene { break }
+                let tooClose = picked.contains { abs($0 - candidate.time) < 0.5 }
+                if !tooClose { picked.append(candidate.time) }
             }
-            // No face found → skip this scene
+            results.append(contentsOf: picked)
         }
 
         #if DEBUG

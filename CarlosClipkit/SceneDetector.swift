@@ -430,85 +430,79 @@ class SceneDetector {
         return results.sorted { $0.start < $1.start }
     }
 
-    /// Select random non-overlapping clip start times across the full video duration
+    /// Select clips that each span a given number of consecutive scenes, spread across the video
     func selectRandomClips(
         videoDuration: Double,
-        clipDuration: Double,
+        scenesPerClip: Int,
         count: Int,
-        avoidCrossingScenes: Bool = false,
         allowOverlapping: Bool = false,
         sceneRanges: [(start: Double, end: Double)] = []
     ) -> [(start: Double, duration: Double)] {
-        guard videoDuration > clipDuration, count > 0 else { return [] }
+        guard count > 0, videoDuration > 0 else { return [] }
 
-        // Build valid placement zones (clips align exactly with scene boundaries)
-        var validZones: [(start: Double, end: Double)] = []
+        let scenes = sceneRanges.isEmpty
+            ? [(start: 0.0, end: videoDuration)]
+            : sceneRanges.sorted { $0.start < $1.start }
+        let windowSize = min(scenesPerClip, scenes.count)
 
-        if avoidCrossingScenes && !sceneRanges.isEmpty {
-            for scene in sceneRanges {
-                let zoneEnd = scene.end - clipDuration
-                if zoneEnd > scene.start {
-                    validZones.append((start: scene.start, end: zoneEnd))
-                }
-            }
-        } else {
-            let zoneEnd = videoDuration - clipDuration
-            if zoneEnd > 0 {
-                validZones.append((start: 0, end: zoneEnd))
+        // Build all valid candidates by sliding a window of windowSize consecutive scenes
+        var candidates: [(start: Double, end: Double)] = []
+        for i in 0...(scenes.count - windowSize) {
+            let start = scenes[i].start
+            let end = scenes[i + windowSize - 1].end
+            if end > start {
+                candidates.append((start: start, end: end))
             }
         }
 
-        guard !validZones.isEmpty else { return [] }
+        guard !candidates.isEmpty else { return [] }
 
-        let totalZoneLength = validZones.reduce(0.0) { $0 + ($1.end - $1.start) }
-        let targetCount: Int
-        if allowOverlapping {
-            targetCount = count
-        } else {
-            let maxClips = Int(totalZoneLength / clipDuration)
-            targetCount = min(count, max(1, maxClips))
-        }
+        let targetCount = allowOverlapping
+            ? count
+            : min(count, candidates.count)
 
-        // Generate random non-overlapping start times via rejection sampling
-        var placements: [Double] = []
-        var attempts = 0
-        let maxAttempts = targetCount * 100
+        // Select clips spread evenly with random jitter for variety
+        var selected: [(start: Double, duration: Double)] = []
+        let spacing = Double(candidates.count) / Double(targetCount)
 
-        while placements.count < targetCount && attempts < maxAttempts {
-            attempts += 1
+        var usedIndices = Set<Int>()
+        for i in 0..<targetCount {
+            // Compute the range of candidates in this "bucket"
+            let bucketStart = Int(Double(i) * spacing)
+            let bucketEnd = min(Int(Double(i + 1) * spacing), candidates.count)
+            let bucketSize = bucketEnd - bucketStart
 
-            // Pick a random point weighted by zone length
-            let randomPoint = Double.random(in: 0..<totalZoneLength)
-            var accumulated = 0.0
-            var chosenStart: Double? = nil
+            // Pick a random index within this bucket for variety on re-generate
+            let jitter = bucketSize > 1 ? Int.random(in: 0..<bucketSize) : 0
+            let centerIndex = bucketStart + jitter
 
-            for zone in validZones {
-                let zoneLength = zone.end - zone.start
-                if randomPoint < accumulated + zoneLength {
-                    chosenStart = zone.start + (randomPoint - accumulated)
+            // Search outward from the picked index for a valid, non-overlapping candidate
+            var bestIndex: Int? = nil
+            for offset in 0..<candidates.count {
+                for dir in [0, 1, -1] {
+                    let idx = dir == 0 ? centerIndex : centerIndex + offset * dir
+                    guard idx >= 0, idx < candidates.count else { continue }
+                    if !allowOverlapping && usedIndices.contains(idx) { continue }
+                    let candidate = candidates[idx]
+                    if !allowOverlapping {
+                        let overlaps = selected.contains { existing in
+                            candidate.start < existing.start + existing.duration && candidate.end > existing.start
+                        }
+                        if overlaps { continue }
+                    }
+                    bestIndex = idx
                     break
                 }
-                accumulated += zoneLength
+                if bestIndex != nil { break }
             }
-
-            guard let startTime = chosenStart else { continue }
-
-            // Check for overlap with existing placements (skip if overlapping allowed)
-            if allowOverlapping {
-                placements.append(startTime)
-            } else {
-                let overlaps = placements.contains { existing in
-                    let existingEnd = existing + clipDuration
-                    let newEnd = startTime + clipDuration
-                    return startTime < existingEnd && newEnd > existing
-                }
-                if !overlaps {
-                    placements.append(startTime)
-                }
+            if let idx = bestIndex {
+                let c = candidates[idx]
+                selected.append((start: c.start, duration: c.end - c.start))
+                usedIndices.insert(idx)
             }
         }
 
-        return placements.sorted().map { (start: $0, duration: clipDuration) }
+        return selected.sorted { $0.start < $1.start }
     }
 
     // MARK: - Private Methods

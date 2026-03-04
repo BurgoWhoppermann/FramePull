@@ -61,6 +61,9 @@ struct ManualMarkingView: View {
     @State private var faceStillsCount: Int = 0
     @State private var showFaceDetectionAlert = false
     @State private var cachedFaceTimestamps: [Double]? = nil
+    @State private var keyMonitor: Any? = nil
+    @State private var stillsExpanded = false
+    @State private var clipsExpanded = false
 
     private let sceneDetector = SceneDetector()
     private let videoProcessor = VideoProcessor()
@@ -127,6 +130,76 @@ struct ManualMarkingView: View {
 
             // Don't autoplay — user can press Space or click to start
             appState.videoSize = playerController.videoSize
+
+            // Global key monitor ensures marking keys work even when focus is on UI controls
+            let ms = markingState
+            let pc = playerController
+            let app = appState
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                // Don't intercept keys when a text field has focus
+                if let responder = event.window?.firstResponder, responder is NSTextView {
+                    return event
+                }
+                guard let chars = event.charactersIgnoringModifiers?.lowercased() else { return event }
+                switch chars {
+                case "s":
+                    ms.addStill(at: pc.currentTime)
+                    return nil
+                case "i":
+                    ms.setInPoint(at: pc.currentTime, snapEnabled: app.snapToSceneCuts)
+                    return nil
+                case "o":
+                    ms.setOutPoint(at: pc.currentTime, snapEnabled: app.snapToSceneCuts)
+                    return nil
+                case " ":
+                    pc.togglePlayPause()
+                    return nil
+                case "z" where event.modifierFlags.contains(.command):
+                    ms.undo()
+                    return nil
+                default:
+                    if event.keyCode == 53 { // Escape
+                        ms.cancelPendingInPoint()
+                        return nil
+                    } else if event.keyCode == 51 || event.keyCode == 117 { // Backspace / Forward Delete
+                        let tolerance = 0.05
+                        let time = pc.currentTime
+                        if let still = ms.markedStills.first(where: { abs($0.timestamp - time) < tolerance }) {
+                            ms.removeStill(id: still.id)
+                        } else if let clip = ms.markedClips.first(where: { abs($0.inPoint - time) < tolerance }) {
+                            ms.removeClip(id: clip.id)
+                        } else if let clip = ms.markedClips.first(where: { abs($0.outPoint - time) < tolerance }) {
+                            ms.removeClipOutPoint(id: clip.id)
+                        }
+                        return nil
+                    } else if event.keyCode == 126 { // Up arrow
+                        let allTimestamps = (
+                            ms.markedStills.map { $0.timestamp } +
+                            ms.markedClips.flatMap { [$0.inPoint, $0.outPoint] }
+                        ).sorted()
+                        if let t = allTimestamps.last(where: { $0 < pc.currentTime - 0.05 }) {
+                            pc.seek(to: t)
+                        }
+                        return nil
+                    } else if event.keyCode == 125 { // Down arrow
+                        let allTimestamps = (
+                            ms.markedStills.map { $0.timestamp } +
+                            ms.markedClips.flatMap { [$0.inPoint, $0.outPoint] }
+                        ).sorted()
+                        if let t = allTimestamps.first(where: { $0 > pc.currentTime + 0.05 }) {
+                            pc.seek(to: t)
+                        }
+                        return nil
+                    } else if event.keyCode == 123 && event.modifierFlags.contains(.shift) {
+                        pc.stepFrames(-10)
+                        return nil
+                    } else if event.keyCode == 124 && event.modifierFlags.contains(.shift) {
+                        pc.stepFrames(10)
+                        return nil
+                    }
+                    return event
+                }
+            }
         }
         .onChange(of: playerController.videoSize) { newSize in
             appState.videoSize = newSize
@@ -140,7 +213,10 @@ struct ManualMarkingView: View {
         .onChange(of: appState.stillCount) { _ in liveUpdateStills() }
         .onChange(of: appState.stillPlacement) { newPlacement in
             let sceneCount = max(1, effectiveScenes.count)
-            if newPlacement == .perScene {
+            if newPlacement == .preferFaces {
+                // Switching TO prefer faces: default 1 face per scene
+                appState.stillCount = 1
+            } else if newPlacement == .perScene {
                 // Switching TO per-scene: divide total by scene count so total stays ~same
                 appState.stillCount = max(1, appState.stillCount / sceneCount)
             } else if newPlacement == .spreadEvenly {
@@ -149,15 +225,22 @@ struct ManualMarkingView: View {
             }
             liveUpdateStills()
         }
-        .onChange(of: appState.exportStillsEnabled) { _ in liveUpdateStills() }
+        .onChange(of: appState.exportStillsEnabled) { _ in
+            // Don't regenerate — just toggle visibility (markers persist)
+        }
         // Live-update clips when clip-only settings change
         .onChange(of: appState.clipCount) { _ in liveUpdateClips() }
-        .onChange(of: appState.clipDuration) { _ in liveUpdateClips() }
-        .onChange(of: appState.exportMovingClipsEnabled) { _ in liveUpdateClips() }
-        .onChange(of: appState.avoidCrossingScenes) { _ in liveUpdateClips() }
+        .onChange(of: appState.scenesPerClip) { _ in liveUpdateClips() }
+        .onChange(of: appState.exportMovingClipsEnabled) { _ in
+            // Don't regenerate — just toggle visibility (markers persist)
+        }
         .onChange(of: appState.allowOverlapping) { _ in liveUpdateClips() }
         .onDisappear {
             playerController.pause()
+            if let monitor = keyMonitor {
+                NSEvent.removeMonitor(monitor)
+                keyMonitor = nil
+            }
         }
         .alert("Error", isPresented: $showError) {
             Button("OK", role: .cancel) { }
@@ -203,9 +286,11 @@ struct ManualMarkingView: View {
 
     private var markerHintBar: some View {
         HStack(spacing: 8) {
-            Text("Place markers with")
-                .font(.headline)
-                .foregroundColor(.secondary)
+            if !hasGenerated {
+                Text("Place markers with")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+            }
 
             Button(action: { handleKeyPress(.still) }) {
                 keyCap("S", glowColor: .orange)
@@ -235,9 +320,11 @@ struct ManualMarkingView: View {
             }
             .help("Mark OUT point (O)")
 
-            Text("on your keyboard or")
-                .font(.headline)
-                .foregroundColor(.secondary)
+            if !hasGenerated {
+                Text("on your keyboard or")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+            }
 
             Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showAnalysisDialog.toggle() } }) {
                 Label("Auto-Generate", systemImage: "sparkles")
@@ -255,6 +342,7 @@ struct ManualMarkingView: View {
                 .controlSize(.regular)
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: hasGenerated)
         .padding(.horizontal)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
@@ -519,8 +607,8 @@ struct ManualMarkingView: View {
                 currentTime: playerController.currentTime,
                 onSeek: { playerController.scrub(to: $0) },
                 sceneCuts: markingState.detectedCuts,
-                markedStills: markingState.markedStills,
-                markedClips: markingState.markedClips,
+                markedStills: appState.exportStillsEnabled ? markingState.markedStills : [],
+                markedClips: appState.exportMovingClipsEnabled ? markingState.markedClips : [],
                 pendingInPoint: markingState.pendingInPoint,
                 onStillPositionChanged: { id, newTime in
                     markingState.updateStillPosition(id: id, to: newTime)
@@ -572,17 +660,12 @@ struct ManualMarkingView: View {
 
     private var inlineGeneratePanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header
+            // Close button
             HStack {
-                Image(systemName: "dice")
-                    .font(.system(size: 14))
-                    .foregroundColor(.clipkitBlue)
-                Text("Random Generate Markers")
-                    .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showAnalysisDialog = false } }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: 14))
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -590,21 +673,30 @@ struct ManualMarkingView: View {
 
             // ── Stills ──
             VStack(alignment: .leading, spacing: 8) {
-                inlineSectionToggle(title: "Stills", icon: "photo.on.rectangle", isOn: $appState.exportStillsEnabled)
+                HStack {
+                    inlineSectionToggle(title: "Stills", icon: "photo.on.rectangle", isOn: $appState.exportStillsEnabled)
+                    if !markingState.markedStills.isEmpty {
+                        Button(action: { markingState.clearStills() }) {
+                            Label("Clear", systemImage: "trash")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                        .help("Clear all stills")
+                    }
+                }
 
                 HStack(spacing: 12) {
-                    if appState.stillPlacement != .preferFaces {
-                        HStack(spacing: 6) {
-                            Text(appState.stillPlacement == .perScene ? "per scene" : "Count")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            TextField("", value: $appState.stillCount, format: .number)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 40)
-                                .multilineTextAlignment(.center)
-                            Stepper("", value: $appState.stillCount, in: 1...100)
-                                .labelsHidden()
-                        }
+                    HStack(spacing: 6) {
+                        Text(appState.stillPlacement == .preferFaces ? "per scene" : (appState.stillPlacement == .perScene ? "per scene" : "Count"))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("", value: $appState.stillCount, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 40)
+                            .multilineTextAlignment(.center)
+                        Stepper("", value: $appState.stillCount, in: 1...100)
+                            .labelsHidden()
                     }
 
                     HStack(spacing: 6) {
@@ -626,7 +718,18 @@ struct ManualMarkingView: View {
 
             // ── Clips ──
             VStack(alignment: .leading, spacing: 8) {
-                inlineSectionToggle(title: "Clips", icon: "film", isOn: $appState.exportMovingClipsEnabled)
+                HStack {
+                    inlineSectionToggle(title: "Clips", icon: "film", isOn: $appState.exportMovingClipsEnabled)
+                    if !markingState.markedClips.isEmpty {
+                        Button(action: { markingState.clearClips() }) {
+                            Label("Clear", systemImage: "trash")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                        .help("Clear all clips")
+                    }
+                }
 
                 HStack(spacing: 12) {
                     HStack(spacing: 6) {
@@ -641,24 +744,46 @@ struct ManualMarkingView: View {
                             .labelsHidden()
                     }
 
-                    HStack(spacing: 6) {
-                        Text("Length")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Slider(value: $appState.clipDuration, in: 1.0...30.0, step: 1.0)
-                            .tint(.clipkitBlue)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text("Scenes per clip")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Slider(value: Binding(
+                                get: { Double(appState.scenesPerClip) },
+                                set: { appState.scenesPerClip = max(1, Int($0.rounded())) }
+                            ), in: 1...Double(max(2, effectiveScenes.count)), step: 1)
+                                .tint(.clipkitBlue)
+                                .frame(minWidth: 80)
+                                .disabled(effectiveScenes.count <= 1)
+                        }
+                        HStack(spacing: 6) {
+                            // Invisible spacer matching the label width
+                            Text("Scenes per clip")
+                                .font(.caption)
+                                .hidden()
+                            let maxScenes = max(2, effectiveScenes.count)
+                            HStack {
+                                Text("1")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary.opacity(0.6))
+                                Spacer()
+                                if appState.scenesPerClip > 1 && appState.scenesPerClip < maxScenes {
+                                    Text("\(appState.scenesPerClip)")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                }
+                                Spacer()
+                                Text("\(maxScenes)")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary.opacity(0.6))
+                            }
                             .frame(minWidth: 80)
-                        Text("\(appState.clipDuration, specifier: "%.0f")s")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(width: 22, alignment: .trailing)
+                        }
                     }
                 }
 
                 HStack(spacing: 16) {
-                    Toggle("Avoid crossing cuts", isOn: $appState.avoidCrossingScenes)
-                        .toggleStyle(.checkbox)
-                        .font(.caption)
                     Toggle("Allow overlapping", isOn: $appState.allowOverlapping)
                         .toggleStyle(.checkbox)
                         .font(.caption)
@@ -708,9 +833,7 @@ struct ManualMarkingView: View {
     }
 
     private func inlineSectionToggle(title: String, icon: String, isOn: Binding<Bool>) -> some View {
-        Button {
-            isOn.wrappedValue.toggle()
-        } label: {
+        Toggle(isOn: isOn) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 13))
@@ -719,24 +842,9 @@ struct ManualMarkingView: View {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(isOn.wrappedValue ? .primary : .secondary)
-                Spacer()
-                Image(systemName: isOn.wrappedValue ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 16))
-                    .foregroundColor(isOn.wrappedValue ? .clipkitBlue : .secondary.opacity(0.5))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isOn.wrappedValue ? Color.clipkitLightBlue : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(isOn.wrappedValue ? Color.clipkitBlue : Color.gray.opacity(0.3), lineWidth: 1)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .toggleStyle(.checkbox)
     }
 
     // MARK: - Pending Clip Indicator
@@ -764,11 +872,7 @@ struct ManualMarkingView: View {
     // MARK: - Stills Section
 
     private var stillsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("STILLS (\(markingState.markedStills.count))")
-                .font(.headline)
-                .foregroundColor(.clipkitBlue)
-
+        DisclosureGroup(isExpanded: $stillsExpanded) {
             if markingState.markedStills.isEmpty {
                 Text("Press S to snap stills")
                     .font(.caption)
@@ -806,22 +910,29 @@ struct ManualMarkingView: View {
                     }
                 }
             }
+        } label: {
+            HStack {
+                Text("STILLS (\(markingState.markedStills.count))")
+                    .font(.headline)
+                    .foregroundColor(.clipkitBlue)
+                Spacer()
+                if !markingState.markedStills.isEmpty {
+                    Button(action: { markingState.clearStills() }) {
+                        Label("Clear", systemImage: "trash")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.secondary)
+                    .help("Clear all stills")
+                }
+            }
         }
     }
 
     // MARK: - Clips Section
 
     private var clipsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("CLIPS (\(markingState.markedClips.count))")
-                    .font(.headline)
-                    .foregroundColor(.clipkitBlue)
-                Text("-> exports as clip + GIF")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
+        DisclosureGroup(isExpanded: $clipsExpanded) {
             if markingState.markedClips.isEmpty {
                 Text("Press I to mark IN, O to mark OUT")
                     .font(.caption)
@@ -861,6 +972,25 @@ struct ManualMarkingView: View {
                     .onTapGesture(count: 2) {
                         markingState.removeClip(id: clip.id)
                     }
+                }
+            }
+        } label: {
+            HStack {
+                Text("CLIPS (\(markingState.markedClips.count))")
+                    .font(.headline)
+                    .foregroundColor(.clipkitBlue)
+                Text("→ exports as clip + GIF")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                if !markingState.markedClips.isEmpty {
+                    Button(action: { markingState.clearClips() }) {
+                        Label("Clear", systemImage: "trash")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.secondary)
+                    .help("Clear all clips")
                 }
             }
         }
@@ -1108,6 +1238,7 @@ struct ManualMarkingView: View {
                 let timestamps = await videoProcessor.findBestFacePerScene(
                     from: videoURL,
                     scenes: scenes,
+                    countPerScene: appState.stillCount,
                     progress: { progress, message in
                         Task { @MainActor in
                             faceSearchProgress = progress
@@ -1150,9 +1281,8 @@ struct ManualMarkingView: View {
 
         let clipSpecs = sceneDetector.selectRandomClips(
             videoDuration: appState.videoDuration,
-            clipDuration: appState.clipDuration,
+            scenesPerClip: appState.scenesPerClip,
             count: appState.clipCount,
-            avoidCrossingScenes: appState.avoidCrossingScenes,
             allowOverlapping: appState.allowOverlapping,
             sceneRanges: effectiveScenes
         )
@@ -1271,7 +1401,7 @@ struct ManualTimelineView: View {
                 // Background track
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color.gray.opacity(0.15))
-                    .frame(height: 40)
+                    .frame(height: 52)
                     .padding(.top, 2)
 
                 // Scene cut markers (vertical lines)
@@ -1279,8 +1409,8 @@ struct ManualTimelineView: View {
                     let x = xPosition(for: cut, width: width)
                     Rectangle()
                         .fill(cutColor)
-                        .frame(width: 1, height: 40)
-                        .position(x: x, y: 22)
+                        .frame(width: 1, height: 52)
+                        .position(x: x, y: 28)
                 }
 
                 // Marked clips (green ranges with draggable edges)
@@ -1294,24 +1424,24 @@ struct ManualTimelineView: View {
                     let displayOutX = isDragging && draggingClipEdge == .outPoint ? outX + clipDragOffset : outX
                     let clipWidth = max(4, displayOutX - displayInX)
 
-                    // Clip range background — follows drag
+                    // Clip range background — follows drag (bottom lane)
                     RoundedRectangle(cornerRadius: 2)
                         .fill(clipColor.opacity(isDragging ? 0.6 : 0.4))
-                        .frame(width: clipWidth, height: 24)
-                        .position(x: displayInX + clipWidth / 2, y: 22)
+                        .frame(width: clipWidth, height: 20)
+                        .position(x: displayInX + clipWidth / 2, y: 40)
 
                     // In point handle (left edge)
                     let isInActive = activeMarker == .clipInPoint(clip.id)
                     let isInHovered = hoveredClipEdge?.0 == clip.id && hoveredClipEdge?.1 == .inPoint
                     let inHandleWidth: CGFloat = isInActive ? 10 : (isInHovered ? 8 : 6)
-                    let inHandleHeight: CGFloat = isInActive ? 36 : (isInHovered ? 34 : 30)
+                    let inHandleHeight: CGFloat = isInActive ? 28 : (isInHovered ? 26 : 22)
                     RoundedRectangle(cornerRadius: 2)
                         .fill(isInActive ? Color.white : clipColor)
                         .frame(width: inHandleWidth, height: inHandleHeight)
                         .shadow(color: isInActive ? Color.white.opacity(0.6) : (isInHovered ? clipColor.opacity(0.6) : .clear), radius: isInActive ? 6 : 4)
                         .animation(.easeInOut(duration: 0.15), value: isInHovered)
                         .animation(.easeInOut(duration: 0.15), value: isInActive)
-                        .frame(width: 20, height: 44)
+                        .frame(width: 20, height: 28)
                         .contentShape(Rectangle())
                         .onHover { hovering in
                             guard draggingClipId == nil else { return }
@@ -1343,21 +1473,21 @@ struct ManualTimelineView: View {
                                     clipDragOffset = 0
                                 }
                         )
-                        .position(x: displayInX, y: 22)
+                        .position(x: displayInX, y: 40)
                         .zIndex(isDragging && draggingClipEdge == .inPoint ? 50 : 5)
 
                     // Out point handle (right edge)
                     let isOutActive = activeMarker == .clipOutPoint(clip.id)
                     let isOutHovered = hoveredClipEdge?.0 == clip.id && hoveredClipEdge?.1 == .outPoint
                     let outHandleWidth: CGFloat = isOutActive ? 10 : (isOutHovered ? 8 : 6)
-                    let outHandleHeight: CGFloat = isOutActive ? 36 : (isOutHovered ? 34 : 30)
+                    let outHandleHeight: CGFloat = isOutActive ? 28 : (isOutHovered ? 26 : 22)
                     RoundedRectangle(cornerRadius: 2)
                         .fill(isOutActive ? Color.white : clipColor)
                         .frame(width: outHandleWidth, height: outHandleHeight)
                         .shadow(color: isOutActive ? Color.white.opacity(0.6) : (isOutHovered ? clipColor.opacity(0.6) : .clear), radius: isOutActive ? 6 : 4)
                         .animation(.easeInOut(duration: 0.15), value: isOutHovered)
                         .animation(.easeInOut(duration: 0.15), value: isOutActive)
-                        .frame(width: 20, height: 44)
+                        .frame(width: 20, height: 28)
                         .contentShape(Rectangle())
                         .onHover { hovering in
                             guard draggingClipId == nil else { return }
@@ -1389,17 +1519,17 @@ struct ManualTimelineView: View {
                                     clipDragOffset = 0
                                 }
                         )
-                        .position(x: displayOutX, y: 22)
+                        .position(x: displayOutX, y: 40)
                         .zIndex(isDragging && draggingClipEdge == .outPoint ? 50 : 5)
                 }
 
-                // Pending IN point (orange dashed line)
+                // Pending IN point (orange dashed line — clip lane)
                 if let pendingIn = pendingInPoint {
                     let x = xPosition(for: pendingIn, width: width)
                     Rectangle()
                         .fill(pendingColor)
-                        .frame(width: 3, height: 36)
-                        .position(x: x, y: 22)
+                        .frame(width: 3, height: 24)
+                        .position(x: x, y: 40)
                         .zIndex(15)
                 }
 
@@ -1422,7 +1552,7 @@ struct ManualTimelineView: View {
                         )
                         .shadow(color: (isDragging || isHovered || isSelected) ? stillColor.opacity(0.8) : .clear, radius: isSelected ? 6 : 4)
                         .animation(.easeInOut(duration: 0.15), value: isHovered)
-                        .frame(width: 30, height: 44)
+                        .frame(width: 30, height: 28)
                         .contentShape(Rectangle())
                         .onHover { hovering in
                             guard draggingStillId == nil else { return }
@@ -1460,7 +1590,7 @@ struct ManualTimelineView: View {
                                     NSCursor.pop()
                                 }
                         )
-                        .position(x: currentX, y: 22)
+                        .position(x: currentX, y: 16)
                         .zIndex(isDragging ? 100 : (isSelected ? 50 : (isHovered ? 50 : 10)))
                         .animation(.easeInOut(duration: 0.15), value: isSelected)
                 }
@@ -1469,12 +1599,12 @@ struct ManualTimelineView: View {
                 let playheadX = xPosition(for: currentTime, width: width)
                 RoundedRectangle(cornerRadius: 1)
                     .fill(playheadColor)
-                    .frame(width: 3, height: 48)
-                    .position(x: playheadX, y: 22)
+                    .frame(width: 3, height: 56)
+                    .position(x: playheadX, y: 28)
                     .zIndex(200)
             }
             .coordinateSpace(name: "timeline")
-            .frame(height: 44)
+            .frame(height: 56)
             .clipped()
             .contentShape(Rectangle())
             .onHover { isHovering in
@@ -1508,7 +1638,7 @@ struct ManualTimelineView: View {
                     }
             )
         }
-        .frame(height: 44)
+        .frame(height: 56)
     }
 
     private func nearestStillId(at xPosition: CGFloat, width: CGFloat) -> UUID? {
