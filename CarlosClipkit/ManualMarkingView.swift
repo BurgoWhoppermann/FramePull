@@ -330,7 +330,7 @@ struct ManualMarkingView: View {
                 Label("Auto-Generate", systemImage: "sparkles")
             }
             .buttonStyle(.borderedProminent)
-            .tint(showAnalysisDialog ? .orange : .clipkitBlue)
+            .tint(.framePullAmber)
             .controlSize(.regular)
 
             if markingState.hasMarkedItems {
@@ -804,11 +804,11 @@ struct ManualMarkingView: View {
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.clipkitBlue)
+                .tint(.framePullAmber)
                 .controlSize(.regular)
                 .disabled(!appState.exportStillsEnabled && !appState.exportMovingClipsEnabled)
                 .scaleEffect(!hasGenerated && generateButtonGlow ? 1.06 : 1.0)
-                .shadow(color: !hasGenerated ? Color.clipkitBlue.opacity(generateButtonGlow ? 0.7 : 0.0) : .clear, radius: 8)
+                .shadow(color: !hasGenerated ? Color.framePullAmber.opacity(generateButtonGlow ? 0.7 : 0.0) : .clear, radius: 8)
                 .onAppear {
                     withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
                         generateButtonGlow = true

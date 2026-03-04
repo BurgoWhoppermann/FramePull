@@ -30,7 +30,7 @@ struct BetaSplashView: View {
                         .frame(width: 72, height: 72)
                 }
 
-                Text("Carlo's Clipkit")
+                Text("FramePull")
                     .font(.title.weight(.bold))
 
                 Text("BETA")
@@ -82,7 +82,7 @@ struct BetaSplashView: View {
 
             // Bug report link
             Button(action: {
-                if let url = URL(string: "mailto:mail@carlooppermann.com?subject=Clipkit%20Bug%20Report") {
+                if let url = URL(string: "mailto:mail@carlooppermann.com?subject=FramePull%20Bug%20Report") {
                     NSWorkspace.shared.open(url)
                 }
             }) {

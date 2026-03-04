@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Carlo's Clipkit is a native macOS SwiftUI application that extracts still frames, animated GIFs, and video clips from source videos using intelligent scene detection. It has zero external dependencies — only Apple frameworks (AVFoundation, Vision, CoreImage, ImageIO, AppKit, Combine).
+FramePull is a native macOS SwiftUI application that extracts still frames, animated GIFs, and video clips from source videos using intelligent scene detection. It has zero external dependencies — only Apple frameworks (AVFoundation, Vision, CoreImage, ImageIO, AppKit, Combine).
 
 ## Build Commands
 
