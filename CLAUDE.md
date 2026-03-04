@@ -10,16 +10,16 @@ FramePull is a native macOS SwiftUI application that extracts still frames, anim
 
 ```bash
 # Build (Debug)
-xcodebuild -scheme CarlosClipkit -configuration Debug
+xcodebuild -scheme FramePull -configuration Debug
 
 # Build (Release)
-xcodebuild -scheme CarlosClipkit -configuration Release
+xcodebuild -scheme FramePull -configuration Release
 
 # Clean
-xcodebuild clean -scheme CarlosClipkit
+xcodebuild clean -scheme FramePull
 
 # Build and run
-xcodebuild -scheme CarlosClipkit -configuration Debug -derivedDataPath ./build && open ./build/Build/Products/Debug/CarlosClipkit.app
+xcodebuild -scheme FramePull -configuration Debug -derivedDataPath ./build && open ./build/Build/Products/Debug/FramePull.app
 ```
 
 There are no tests, linting, or CI/CD configured.
@@ -51,14 +51,14 @@ Uses histogram-based frame comparison with **Bhattacharyya distance** on 8×8×8
 
 ### State Management
 
-- `AppState` (`CarlosClipkitApp.swift`) — Central ObservableObject holding video URL, extraction settings, detected scenes, still positions, export config.
+- `AppState` (`FramePullApp.swift`) — Central ObservableObject holding video URL, extraction settings, detected scenes, still positions, export config.
 - `MarkingState` (`MarkingState.swift`) — Observable state for manual mode with undo/redo stack and pending clip ranges.
 
 ### Video Player (`VideoPlayerRepresentable.swift`)
 
 Custom `NSViewRepresentable` wrapping AVPlayer with looping playback, keyboard event capture, time observation for UI sync, and video dimension detection.
 
-## Key Enums (in `CarlosClipkitApp.swift`)
+## Key Enums (in `FramePullApp.swift`)
 
 `ExtractionMode`, `OutputFormat`, `GIFResolution`, `StillFormat`, `StillSize`, `ClipQuality`, `PlaybackSpeed` — all defined alongside `AppState`.
 
