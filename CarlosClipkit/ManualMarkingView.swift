@@ -64,6 +64,7 @@ struct ManualMarkingView: View {
     @State private var keyMonitor: Any? = nil
     @State private var stillsExpanded = false
     @State private var clipsExpanded = false
+    @State private var showShortcuts = false
 
     private let sceneDetector = SceneDetector()
     private let videoProcessor = VideoProcessor()
@@ -109,8 +110,8 @@ struct ManualMarkingView: View {
 
             Divider()
 
-            // Bottom: Export button only
-            VStack(spacing: 8) {
+            // Bottom: Export button + shortcuts button
+            HStack {
                 Button("Export Settings...") {
                     showExportSheet = true
                 }
@@ -119,6 +120,17 @@ struct ManualMarkingView: View {
                 .controlSize(.large)
                 .frame(maxWidth: .infinity)
                 .disabled(!markingState.hasMarkedItems)
+
+                Button(action: { showShortcuts = true }) {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(Color.secondary.opacity(0.12))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .help("Keyboard Shortcuts")
             }
             .padding()
         }
@@ -280,6 +292,9 @@ struct ManualMarkingView: View {
             )
             .environmentObject(appState)
         }
+        .sheet(isPresented: $showShortcuts) {
+            KeyboardShortcutsView()
+        }
     }
 
     // MARK: - Marker Hint Bar
@@ -346,16 +361,7 @@ struct ManualMarkingView: View {
         .padding(.horizontal)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color.clipkitBlue.opacity(0.12),
-                    Color.clipkitBlue.opacity(0.06)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        )
+        .background(Color(NSColor.controlBackgroundColor))
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color.clipkitBlue.opacity(0.2))
@@ -1115,7 +1121,42 @@ struct ManualMarkingView: View {
 
     private func liveUpdateStills() {
         guard showAnalysisDialog else { return }
-        regenerateStills()
+
+        // For prefer-faces mode, fall back to full regeneration (async)
+        if appState.stillPlacement == .preferFaces {
+            regenerateStills()
+            return
+        }
+
+        // Incremental: sync current marker positions into appState, then adjust
+        let currentPositions = markingState.markedStills.map { $0.timestamp }.sorted()
+        appState.stillPositions = currentPositions
+
+        let newCount = appState.stillCount
+
+        if appState.stillPlacement == .perScene {
+            // Per-scene: target is stillCount * sceneCount
+            let targetCount = newCount * max(1, effectiveScenes.count)
+            appState.adjustStillPositions(to: targetCount, scenes: effectiveScenes)
+        } else {
+            appState.adjustStillPositions(to: newCount, scenes: effectiveScenes)
+        }
+
+        let newPositions = Set(appState.stillPositions)
+        let oldPositionSet = Set(currentPositions)
+
+        // Add new stills (positions that didn't exist before)
+        for pos in appState.stillPositions where !oldPositionSet.contains(pos) {
+            markingState.addStill(at: pos)
+        }
+
+        // Remove excess stills (positions that are no longer needed)
+        let positionsToRemove = oldPositionSet.subtracting(newPositions)
+        for pos in positionsToRemove {
+            if let still = markingState.markedStills.first(where: { abs($0.timestamp - pos) < 0.001 }) {
+                markingState.removeStill(id: still.id)
+            }
+        }
     }
 
     private func liveUpdateClips() {
@@ -1194,23 +1235,33 @@ struct ManualMarkingView: View {
     }
 
     /// Regenerate only stills based on current settings (leaves clips untouched)
+    /// Used by the Generate button — saves old state for undo
     private func regenerateStills() {
         // Cancel any in-progress face search
         faceRefinementTask?.cancel()
         faceRefinementTask = nil
         isSearchingFaces = false
 
+        // Save old stills so the full regeneration is undo-able
+        let previousStills = markingState.markedStills
+        let previousClips = markingState.markedClips
+
         // Clear existing stills only
         markingState.clearStills()
 
         guard appState.exportStillsEnabled else {
-            markingState.undoStack.removeAll()
+            // Record undo if there were stills before
+            if !previousStills.isEmpty {
+                markingState.undoStack.append(.clearedAll(stills: previousStills, clips: previousClips))
+            }
             return
         }
 
         if appState.stillPlacement == .preferFaces {
             // Prefer Faces needs scene detection to work properly
             if appState.detectedScenes.isEmpty {
+                // Restore stills since we can't proceed
+                markingState.markedStills = previousStills
                 showFaceDetectionAlert = true
                 return
             }
@@ -1223,7 +1274,11 @@ struct ManualMarkingView: View {
                     markingState.addStill(at: t)
                 }
                 faceStillsCount = cached.count
+                // Replace auto-generated undo entries with a single undo-to-previous
                 markingState.undoStack.removeAll()
+                if !previousStills.isEmpty {
+                    markingState.undoStack.append(.clearedAll(stills: previousStills, clips: previousClips))
+                }
                 return
             }
 
@@ -1253,7 +1308,11 @@ struct ManualMarkingView: View {
                     for t in timestamps {
                         markingState.addStill(at: t)
                     }
+                    // Replace auto-generated undo entries with a single undo-to-previous
                     markingState.undoStack.removeAll()
+                    if !previousStills.isEmpty {
+                        markingState.undoStack.append(.clearedAll(stills: previousStills, clips: previousClips))
+                    }
                     faceStillsCount = timestamps.count
                     isSearchingFaces = false
                     cachedFaceTimestamps = timestamps
@@ -1267,15 +1326,25 @@ struct ManualMarkingView: View {
             }
         }
 
+        // Replace the auto-generated per-still undo entries with a single undo-to-previous
         markingState.undoStack.removeAll()
+        if !previousStills.isEmpty {
+            markingState.undoStack.append(.clearedAll(stills: previousStills, clips: previousClips))
+        }
     }
 
     /// Regenerate only clips based on current settings (leaves stills untouched)
+    /// Saves old state for undo
     private func regenerateClips() {
+        let previousStills = markingState.markedStills
+        let previousClips = markingState.markedClips
+
         markingState.clearClips()
 
         guard appState.exportMovingClipsEnabled else {
-            markingState.undoStack.removeAll()
+            if !previousClips.isEmpty {
+                markingState.undoStack.append(.clearedAll(stills: previousStills, clips: previousClips))
+            }
             return
         }
 
@@ -1291,7 +1360,11 @@ struct ManualMarkingView: View {
             markingState.markedClips.append(clip)
         }
         markingState.markedClips.sort { $0.inPoint < $1.inPoint }
-        markingState.undoStack.removeAll()
+
+        // Single undo action to restore previous state
+        if !previousClips.isEmpty || !previousStills.isEmpty {
+            markingState.undoStack.append(.clearedAll(stills: previousStills, clips: previousClips))
+        }
     }
 
     /// Regenerate both stills and clips (used by Generate button)
@@ -1337,13 +1410,20 @@ struct ManualMarkingView: View {
                     cachedFaceTimestamps = nil  // Invalidate face cache when scenes change
                 }
             } catch is CancellationError {
-                // Task was cancelled — exit silently
+                // Task was cancelled — reset all UI state
+                await MainActor.run {
+                    isDetectingScenes = false
+                    appState.isDetectingScenes = false
+                    appState.detectionProgress = 0
+                    appState.detectionStatusMessage = ""
+                }
                 return
             } catch {
                 await MainActor.run {
                     isDetectingScenes = false
                     appState.isDetectingScenes = false
                     appState.detectionProgress = 0
+                    appState.detectionStatusMessage = ""
                 }
             }
         }
@@ -1659,5 +1739,85 @@ struct ManualTimelineView: View {
     private func xPosition(for time: Double, width: CGFloat) -> CGFloat {
         guard duration > 0 else { return 0 }
         return CGFloat((time / duration) * Double(width))
+    }
+}
+
+// MARK: - Keyboard Shortcuts Overlay
+
+struct KeyboardShortcutsView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private let shortcuts: [(key: String, action: String)] = [
+        ("S", "Snap still frame"),
+        ("I", "Mark clip IN point"),
+        ("O", "Mark clip OUT point"),
+        ("Space", "Play / Pause"),
+        ("Delete", "Remove marker at playhead"),
+        ("\u{2318}Z", "Undo"),
+        ("Esc", "Cancel pending IN point"),
+        ("\u{2191}", "Jump to previous marker"),
+        ("\u{2193}", "Jump to next marker"),
+        ("\u{21E7}\u{2190}", "Skip back 10 frames"),
+        ("\u{21E7}\u{2192}", "Skip forward 10 frames"),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Keyboard Shortcuts")
+                    .font(.headline)
+                Spacer()
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+
+            Divider()
+
+            // Shortcuts list
+            VStack(spacing: 6) {
+                ForEach(Array(shortcuts.enumerated()), id: \.offset) { _, shortcut in
+                    HStack(spacing: 16) {
+                        Text(shortcut.key)
+                            .font(.system(.body, design: .monospaced).weight(.semibold))
+                            .foregroundColor(.primary)
+                            .frame(width: 80, alignment: .center)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.secondary.opacity(0.12))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+                            )
+
+                        Text(shortcut.action)
+                            .font(.body)
+                            .foregroundColor(.primary)
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 2)
+                }
+            }
+            .padding(.vertical, 16)
+
+            Spacer()
+
+            // Dismiss hint
+            Text("Press Esc to close")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 14)
+        }
+        .frame(width: 400, height: 520)
     }
 }

@@ -111,9 +111,9 @@ extension Color {
     static let framePullNavy   = Color(red: 0.039, green: 0.122, blue: 0.247) // #0A1F3F Deep Navy
     static let framePullAmber  = Color(red: 0.949, green: 0.620, blue: 0.173) // #F29E2C Warm Amber
     static let framePullSilver = Color(red: 0.875, green: 0.902, blue: 0.929) // #DFE6ED Light Silver
-    // Legacy aliases — navy is now the primary UI accent
-    static let clipkitBlue      = Color.framePullNavy
-    static let clipkitLightBlue = Color.framePullNavy.opacity(0.12)
+    // Primary UI accent — bright blue for readability on dark backgrounds
+    static let clipkitBlue      = Color(red: 0.29, green: 0.56, blue: 0.85)   // #4A90D9
+    static let clipkitLightBlue = Color(red: 0.29, green: 0.56, blue: 0.85).opacity(0.1)
 }
 
 @main

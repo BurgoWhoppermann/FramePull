@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 
 struct BetaSplashView: View {
     let version: String
@@ -41,61 +42,65 @@ struct BetaSplashView: View {
                     .padding(.vertical, 4)
                     .background(Color.clipkitBlue)
                     .cornerRadius(4)
-
-                Text("v\(version) · Build \(build)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
             .padding(.top, 0)
-            .padding(.bottom, 16)
+            .padding(.bottom, 24)
 
-            Divider()
-                .padding(.horizontal, 24)
-
-            // Changelog
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("What's New")
-                        .font(.headline)
-                        .foregroundColor(.clipkitBlue)
-
-                    changeGroup("Face Detection", items: [
-                        "\"Prefer faces\" now prompts to run cut detection first",
-                        "Face search progress bar with scene-by-scene status",
-                        "Results are cached — switching modes doesn't re-scan"
-                    ])
-
-                    changeGroup("GIF & Export", items: [
-                        "New GIF resolutions: 480w, 720p, 1080p",
-                        "GIF quality slider (30–100%)",
-                        "Export respects GIF / video clip toggles correctly"
-                    ])
-
-                    changeGroup("UI Improvements", items: [
-                        "Compact controls bar — legend merged into one row",
-                        "Smart still counts when switching placement modes",
-                        "Arrow keys scrub ±1 frame, Shift+arrow ±10 frames"
-                    ])
-                }
-                .padding(24)
-            }
-
-            // Bug report link
+            // Watch tutorial button
             Button(action: {
-                if let url = URL(string: "mailto:mail@carlooppermann.com?subject=FramePull%20Bug%20Report") {
+                TutorialWindowController.shared.showTutorial()
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.title2)
+                    Text("Watch Quick Start Video")
+                        .font(.body.weight(.medium))
+                }
+                .foregroundColor(.clipkitBlue)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 20)
+                .background(Color.clipkitBlue.opacity(0.1))
+                .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 8)
+
+            // YouTube link
+            Button(action: {
+                if let url = URL(string: "https://youtube.com/shorts/0gg_b9Xx1Xs") {
                     NSWorkspace.shared.open(url)
                 }
             }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "envelope")
-                        .font(.caption)
-                    Text("Found a bug? Email me at mail@carlooppermann.com")
-                        .font(.caption)
+                HStack(spacing: 6) {
+                    Image(systemName: "play.rectangle.fill")
+                        .font(.callout)
+                    Text("Watch on YouTube")
+                        .font(.callout)
                 }
                 .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+
+            Spacer()
+
+            // Build info + bug report
+            VStack(spacing: 4) {
+                Text("Build \(build)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Button(action: {
+                    if let url = URL(string: "mailto:mail@carlooppermann.com?subject=FramePull%20Bug%20Report") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }) {
+                    Text("Found a bug? Please report to mail@carlooppermann.com")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+            }
             .padding(.bottom, 8)
 
             Divider()
@@ -111,7 +116,7 @@ struct BetaSplashView: View {
             .controlSize(.large)
             .padding(20)
         }
-        .frame(width: 380, height: 500)
+        .frame(width: 380, height: 400)
         .background(KeyDismissHandler(onDismiss: onDismiss))
     }
 
@@ -130,7 +135,6 @@ struct BetaSplashView: View {
             var onKeyDown: (() -> Void)?
             override var acceptsFirstResponder: Bool { true }
             override func keyDown(with event: NSEvent) {
-                // Return(36), Space(49), Escape(53)
                 if event.keyCode == 36 || event.keyCode == 49 || event.keyCode == 53 {
                     onKeyDown?()
                 } else {
@@ -139,24 +143,60 @@ struct BetaSplashView: View {
             }
         }
     }
+}
 
-    private func changeGroup(_ title: String, items: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
+// MARK: - Native Tutorial Window
 
-            ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 8) {
-                    Circle()
-                        .fill(Color.clipkitBlue)
-                        .frame(width: 5, height: 5)
-                        .padding(.top, 5.5)
-                    Text(item)
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+class TutorialWindowController: NSObject, NSWindowDelegate {
+    static let shared = TutorialWindowController()
+
+    private var window: NSWindow?
+    private var playerView: AVPlayerView?
+
+    func showTutorial() {
+        // If already open, just bring to front
+        if let window = window, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            return
         }
+
+        guard let videoURL = Bundle.main.url(forResource: "VideoTutorial1", withExtension: "mp4") else { return }
+
+        let player = AVPlayer(url: videoURL)
+
+        let avPlayerView = AVPlayerView()
+        avPlayerView.player = player
+        avPlayerView.controlsStyle = .floating
+        avPlayerView.showsFullScreenToggleButton = true
+        self.playerView = avPlayerView
+
+        // Video is 1080x1660 (portrait) — open at a reasonable size
+        let windowWidth: CGFloat = 440
+        let windowHeight: CGFloat = 676
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "FramePull — Quick Start"
+        window.contentView = avPlayerView
+        window.minSize = NSSize(width: 280, height: 430)
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = .black
+        window.collectionBehavior = [.fullScreenPrimary]
+        window.makeKeyAndOrderFront(nil)
+        self.window = window
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        playerView?.player?.pause()
+        playerView?.player = nil
+        playerView = nil
+        window = nil
     }
 }

@@ -504,7 +504,12 @@ class VideoProcessor {
         let videoName = videoURL.deletingPathExtension().lastPathComponent
         let sortedTimestamps = timestamps.sorted()
 
+        // Find next available index so re-exports never overwrite existing files
+        let stillsDir = ProcessingUtilities.ensureSubdirectory(outputDirectory, path: "stills")
+        let startingIndex = ProcessingUtilities.findNextAvailableIndex(in: stillsDir, prefix: "\(videoName)_still", suffix: ".\(format.fileExtension)")
+
         for (index, timestamp) in sortedTimestamps.enumerated() {
+            let fileIndex = startingIndex + index - 1  // saveFrame uses index+1 for filename
             progress(Double(index) / Double(timestamps.count), "Extracting still \(index + 1) of \(timestamps.count)...")
 
             let time = CMTime(seconds: timestamp, preferredTimescale: 600)
@@ -516,18 +521,18 @@ class VideoProcessor {
                 }
 
                 // Save original
-                try saveFrame(cgImage, index: index, videoName: videoName, outputDirectory: outputDirectory, format: format)
+                try saveFrame(cgImage, index: fileIndex, videoName: videoName, outputDirectory: outputDirectory, format: format)
 
-                // Save 4:5 crop variant
+                // Save 4:5 crop variant (same index for consistency)
                 if export4x5 {
                     let cropped = ProcessingUtilities.cropImageToAspectRatio(cgImage, targetRatio: 4.0 / 5.0)
-                    try saveFrame(cropped, index: index, videoName: videoName, outputDirectory: outputDirectory, format: format, subdirectory: "stills/4x5")
+                    try saveFrame(cropped, index: fileIndex, videoName: videoName, outputDirectory: outputDirectory, format: format, subdirectory: "stills/4x5")
                 }
 
-                // Save 9:16 crop variant
+                // Save 9:16 crop variant (same index for consistency)
                 if export9x16 {
                     let cropped = ProcessingUtilities.cropImageToAspectRatio(cgImage, targetRatio: 9.0 / 16.0)
-                    try saveFrame(cropped, index: index, videoName: videoName, outputDirectory: outputDirectory, format: format, subdirectory: "stills/9x16")
+                    try saveFrame(cropped, index: fileIndex, videoName: videoName, outputDirectory: outputDirectory, format: format, subdirectory: "stills/9x16")
                 }
             } catch {
                 throw ProcessingError.cannotGenerateImage(time: time)

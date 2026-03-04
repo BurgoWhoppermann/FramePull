@@ -22,6 +22,7 @@
 		A1000050 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1000051 /* PrivacyInfo.xcprivacy */; };
 		A1ANALYZE02 /* AnalysisSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ANALYZE01 /* AnalysisSettingsView.swift */; };
 		A1PROCUTIL02 /* ProcessingUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1PROCUTIL01 /* ProcessingUtilities.swift */; };
+		A1VID0T02 /* VideoTutorial1.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A1VID0T01 /* VideoTutorial1.mp4 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		A1000051 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A1ANALYZE01 /* AnalysisSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSettingsView.swift; sourceTree = "<group>"; };
 		A1PROCUTIL01 /* ProcessingUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingUtilities.swift; sourceTree = "<group>"; };
+		A1VID0T01 /* VideoTutorial1.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = VideoTutorial1.mp4; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,6 +84,7 @@
 				A1000028 /* Assets.xcassets */,
 				A1000007 /* Info.plist */,
 				A1000051 /* PrivacyInfo.xcprivacy */,
+				A1VID0T01 /* VideoTutorial1.mp4 */,
 			);
 			path = CarlosClipkit;
 			sourceTree = "<group>";
@@ -155,6 +158,7 @@
 			files = (
 				A1000027 /* Assets.xcassets in Resources */,
 				A1000050 /* PrivacyInfo.xcprivacy in Resources */,
+				A1VID0T02 /* VideoTutorial1.mp4 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -362,7 +366,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.carlooppermann.framepull;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = FramePull;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -406,7 +410,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.carlooppermann.framepull;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = FramePull;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";

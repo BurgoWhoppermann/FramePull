@@ -12,6 +12,7 @@ class VideoSnippetProcessor {
         case cannotCreateExportSession
         case exportFailed(String)
         case durationTooLong(available: Double)
+        case clipTooShort
 
         var errorDescription: String? {
             switch self {
@@ -25,6 +26,8 @@ class VideoSnippetProcessor {
                 return "Video export failed: \(reason)"
             case .durationTooLong(let available):
                 return "Clip duration exceeds available video length (\(String(format: "%.1f", available)) seconds)."
+            case .clipTooShort:
+                return "Clip is too short to create a GIF (needs at least 1 frame)."
             }
         }
     }
@@ -429,6 +432,9 @@ class VideoSnippetProcessor {
         outputURL: URL
     ) async throws {
         let frameCount = Int(duration * Double(frameRate))
+        guard frameCount >= 1 else {
+            throw SnippetError.clipTooShort
+        }
         let frameInterval = duration / Double(frameCount)
         let delayTime = 1.0 / Double(frameRate)
 

@@ -18,7 +18,6 @@ struct ExportSettingsView: View {
     @State private var exportStatusMessage = ""
 
     private let videoProcessor = VideoProcessor()
-    private let gifProcessor = GIFProcessor()
     private let snippetProcessor = VideoSnippetProcessor()
 
     var body: some View {
@@ -317,11 +316,13 @@ struct ExportSettingsView: View {
 
     private func exportManual(to outputDir: URL) async throws {
         let markingState = appState.markingState
-        let totalItems = markingState.markedStills.count + markingState.markedClips.count
+        let stillsCount = (appState.exportStillsEnabled && !markingState.markedStills.isEmpty) ? markingState.markedStills.count : 0
+        let clipsCount = appState.exportMovingClipsEnabled ? markingState.markedClips.count : 0
+        let totalItems = max(1, stillsCount + clipsCount)
         var completedItems = 0
 
         // Export stills
-        if appState.exportStillsEnabled && !markingState.markedStills.isEmpty {
+        if stillsCount > 0 {
             let timestamps = markingState.markedStills.map { $0.timestamp }
             await MainActor.run {
                 exportStatusMessage = "Exporting stills..."
@@ -337,39 +338,41 @@ struct ExportSettingsView: View {
                 export9x16: appState.export9x16
             ) { progress, message in
                 Task { @MainActor in
-                    let stillsProgress = progress * Double(markingState.markedStills.count) / Double(totalItems)
+                    let stillsProgress = progress * Double(stillsCount) / Double(totalItems)
                     exportProgress = stillsProgress
                     exportStatusMessage = message
                 }
             }
 
-            completedItems += markingState.markedStills.count
+            completedItems += stillsCount
         }
 
-        // Export clips (as both video AND GIF)
-        for (index, clip) in markingState.markedClips.enumerated() {
-            await MainActor.run {
-                exportStatusMessage = "Exporting clip \(index + 1) of \(markingState.markedClips.count)..."
-            }
+        // Export clips (as both video AND GIF) — only when moving clips enabled
+        if appState.exportMovingClipsEnabled {
+            for (index, clip) in markingState.markedClips.enumerated() {
+                await MainActor.run {
+                    exportStatusMessage = "Exporting clip \(index + 1) of \(markingState.markedClips.count)..."
+                }
 
-            try await snippetProcessor.exportClipAndGIF(
-                from: videoURL,
-                startTime: clip.inPoint,
-                duration: clip.duration,
-                resolution: appState.gifResolution,
-                gifQuality: appState.gifQuality,
-                exportGIF: appState.exportGIF,
-                exportMP4: appState.exportMP4,
-                format: appState.clipFormat,
-                to: outputDir,
-                export4x5: appState.export4x5,
-                export9x16: appState.export9x16,
-                presetName: appState.clipQuality.exportPreset
-            )
+                try await snippetProcessor.exportClipAndGIF(
+                    from: videoURL,
+                    startTime: clip.inPoint,
+                    duration: clip.duration,
+                    resolution: appState.gifResolution,
+                    gifQuality: appState.gifQuality,
+                    exportGIF: appState.exportGIF,
+                    exportMP4: appState.exportMP4,
+                    format: appState.clipFormat,
+                    to: outputDir,
+                    export4x5: appState.export4x5,
+                    export9x16: appState.export9x16,
+                    presetName: appState.clipQuality.exportPreset
+                )
 
-            completedItems += 1
-            await MainActor.run {
-                exportProgress = Double(completedItems) / Double(totalItems)
+                completedItems += 1
+                await MainActor.run {
+                    exportProgress = Double(completedItems) / Double(totalItems)
+                }
             }
         }
     }

@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A1000013"
-               BuildableName = "CarlosClipkit.app"
+               BuildableName = "FramePull.app"
                BlueprintName = "CarlosClipkit"
                ReferencedContainer = "container:CarlosClipkit.xcodeproj">
             </BuildableReference>
@@ -45,7 +45,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A1000013"
-            BuildableName = "CarlosClipkit.app"
+            BuildableName = "FramePull.app"
             BlueprintName = "CarlosClipkit"
             ReferencedContainer = "container:CarlosClipkit.xcodeproj">
          </BuildableReference>
@@ -62,7 +62,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A1000013"
-            BuildableName = "CarlosClipkit.app"
+            BuildableName = "FramePull.app"
             BlueprintName = "CarlosClipkit"
             ReferencedContainer = "container:CarlosClipkit.xcodeproj">
          </BuildableReference>

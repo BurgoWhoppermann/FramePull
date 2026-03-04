@@ -15,6 +15,7 @@ class GIFProcessor {
         case cannotGenerateFrame(time: CMTime)
         case cannotFinalizeGIF
         case durationTooLong(available: Double)
+        case clipTooShort
 
         var errorDescription: String? {
             switch self {
@@ -30,6 +31,8 @@ class GIFProcessor {
                 return "Failed to finalize GIF file."
             case .durationTooLong(let available):
                 return "GIF duration exceeds available video length (\(String(format: "%.1f", available)) seconds)."
+            case .clipTooShort:
+                return "Clip is too short to create a GIF (needs at least 1 frame)."
             }
         }
     }
@@ -96,6 +99,9 @@ class GIFProcessor {
         progress: @escaping (Double) -> Void
     ) async throws {
         let frameCount = Int(duration * Double(frameRate))
+        guard frameCount >= 1 else {
+            throw GIFError.clipTooShort
+        }
         let frameInterval = duration / Double(frameCount)
         let delayTime = 1.0 / Double(frameRate)
 
