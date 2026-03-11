@@ -24,6 +24,7 @@
 		A1PROCUTIL02 /* ProcessingUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1PROCUTIL01 /* ProcessingUtilities.swift */; };
 		A1VID0T02 /* VideoTutorial1.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A1VID0T01 /* VideoTutorial1.mp4 */; };
 		A1LUT002 /* LUTProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1LUT001 /* LUTProcessor.swift */; };
+		A1LUTF02 /* LUTs in Resources */ = {isa = PBXBuildFile; fileRef = A1LUTF01 /* LUTs */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +47,7 @@
 		A1PROCUTIL01 /* ProcessingUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingUtilities.swift; sourceTree = "<group>"; };
 		A1VID0T01 /* VideoTutorial1.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = VideoTutorial1.mp4; sourceTree = "<group>"; };
 		A1LUT001 /* LUTProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LUTProcessor.swift; sourceTree = "<group>"; };
+		A1LUTF01 /* LUTs */ = {isa = PBXFileReference; lastKnownFileType = folder; path = LUTs; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +86,7 @@
 				A1000030 /* SceneDetector.swift */,
 				A1PROCUTIL01 /* ProcessingUtilities.swift */,
 				A1LUT001 /* LUTProcessor.swift */,
+				A1LUTF01 /* LUTs */,
 				A1000028 /* Assets.xcassets */,
 				A1000007 /* Info.plist */,
 				A1000051 /* PrivacyInfo.xcprivacy */,
@@ -162,6 +165,7 @@
 				A1000027 /* Assets.xcassets in Resources */,
 				A1000050 /* PrivacyInfo.xcprivacy in Resources */,
 				A1VID0T02 /* VideoTutorial1.mp4 in Resources */,
+				A1LUTF02 /* LUTs in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
