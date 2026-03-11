@@ -1843,10 +1843,10 @@ struct ManualTimelineView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(barColor.opacity(isLooping ? 0.7 : (isDragging ? 0.6 : 0.4)))
-                        if clipWidth > 30 && (isBarHovered || isLooping) {
+                        if clipWidth > 30 {
                             Button(action: { onLoopClip(clip.id) }) {
-                                Image(systemName: isLooping ? "stop.fill" : "play.fill")
-                                    .font(.system(size: 12))
+                                Image(systemName: isLooping ? "stop.fill" : "repeat.circle")
+                                    .font(.system(size: isLooping ? 12 : 14))
                                     .foregroundColor(.white)
                                     .shadow(color: .black.opacity(0.5), radius: 2)
                             }
