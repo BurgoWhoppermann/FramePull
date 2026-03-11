@@ -202,6 +202,9 @@ class AppState: ObservableObject {
     @Published var export4x5: Bool = false
     @Published var export9x16: Bool = false
 
+    // Audio
+    @Published var muteAudio: Bool = false
+
     // Output
     @Published var saveURL: URL?
 

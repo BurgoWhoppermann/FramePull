@@ -41,6 +41,7 @@ class VideoSnippetProcessor {
         export4x5: Bool = false,
         export9x16: Bool = false,
         presetName: String = AVAssetExportPresetHighestQuality,
+        muteAudio: Bool = false,
         progress: @escaping (Double, String) -> Void
     ) async throws {
         let asset = AVURLAsset(url: videoURL)
@@ -73,7 +74,8 @@ class VideoSnippetProcessor {
                 duration: spec.duration,
                 format: format,
                 outputURL: fileURL,
-                presetName: presetName
+                presetName: presetName,
+                muteAudio: muteAudio
             )
 
             // Export 4:5 cropped version if requested
@@ -89,7 +91,8 @@ class VideoSnippetProcessor {
                     format: format,
                     aspectRatio: .ratio4x5,
                     outputURL: fileURL4x5,
-                    presetName: presetName
+                    presetName: presetName,
+                    muteAudio: muteAudio
                 )
             }
 
@@ -106,7 +109,8 @@ class VideoSnippetProcessor {
                     format: format,
                     aspectRatio: .ratio9x16,
                     outputURL: fileURL9x16,
-                    presetName: presetName
+                    presetName: presetName,
+                    muteAudio: muteAudio
                 )
             }
 
@@ -124,26 +128,49 @@ class VideoSnippetProcessor {
         outputURL: URL,
         presetName: String = AVAssetExportPresetHighestQuality,
         lutCubeDimension: Int? = nil,
-        lutCubeData: Data? = nil
+        lutCubeData: Data? = nil,
+        muteAudio: Bool = false
     ) async throws {
+        let start = CMTime(seconds: startTime, preferredTimescale: 600)
+        let clipDuration = CMTime(seconds: duration, preferredTimescale: 600)
+        let timeRange = CMTimeRange(start: start, duration: clipDuration)
+
+        // When muting audio, use a composition with only the video track
+        let exportAsset: AVAsset
+        if muteAudio {
+            let composition = AVMutableComposition()
+            if let videoTrack = asset.tracks(withMediaType: .video).first,
+               let compositionVideoTrack = composition.addMutableTrack(
+                   withMediaType: .video,
+                   preferredTrackID: kCMPersistentTrackID_Invalid
+               ) {
+                try compositionVideoTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
+            }
+            exportAsset = composition
+        } else {
+            exportAsset = asset
+        }
+
         guard let exportSession = AVAssetExportSession(
-            asset: asset,
+            asset: exportAsset,
             presetName: presetName
         ) else {
             throw SnippetError.cannotCreateExportSession
         }
 
-        let start = CMTime(seconds: startTime, preferredTimescale: 600)
-        let clipDuration = CMTime(seconds: duration, preferredTimescale: 600)
-        let timeRange = CMTimeRange(start: start, duration: clipDuration)
-
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .mp4
-        exportSession.timeRange = timeRange
+
+        if muteAudio {
+            // Composition already has the correct time range baked in
+            exportSession.timeRange = CMTimeRange(start: .zero, duration: clipDuration)
+        } else {
+            exportSession.timeRange = timeRange
+        }
 
         // Apply LUT via AVVideoComposition if active
         if let dim = lutCubeDimension, let data = lutCubeData {
-            let videoComposition = AVMutableVideoComposition(asset: asset) { request in
+            let videoComposition = AVMutableVideoComposition(asset: exportAsset) { request in
                 let source = request.sourceImage.clampedToExtent()
                 guard let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
                     request.finish(with: source, context: nil)
@@ -156,7 +183,7 @@ class VideoSnippetProcessor {
                 let output = filter.outputImage?.cropped(to: request.sourceImage.extent) ?? source
                 request.finish(with: output, context: nil)
             }
-            if let track = asset.tracks(withMediaType: .video).first {
+            if let track = exportAsset.tracks(withMediaType: .video).first {
                 videoComposition.renderSize = track.naturalSize
                 let fps = track.nominalFrameRate > 0 ? track.nominalFrameRate : 30
                 videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
@@ -216,7 +243,8 @@ class VideoSnippetProcessor {
         export9x16: Bool = false,
         presetName: String = AVAssetExportPresetHighestQuality,
         lutCubeDimension: Int? = nil,
-        lutCubeData: Data? = nil
+        lutCubeData: Data? = nil,
+        muteAudio: Bool = false
     ) async throws {
         let asset = AVURLAsset(url: videoURL)
 
@@ -249,7 +277,8 @@ class VideoSnippetProcessor {
                 outputURL: clipURL,
                 presetName: presetName,
                 lutCubeDimension: lutCubeDimension,
-                lutCubeData: lutCubeData
+                lutCubeData: lutCubeData,
+                muteAudio: muteAudio
             )
         }
 
@@ -285,7 +314,8 @@ class VideoSnippetProcessor {
                     format: format,
                     aspectRatio: .ratio4x5,
                     outputURL: crop4x5ClipURL,
-                    presetName: presetName
+                    presetName: presetName,
+                    muteAudio: muteAudio
                 )
             }
 
@@ -322,7 +352,8 @@ class VideoSnippetProcessor {
                     format: format,
                     aspectRatio: .ratio9x16,
                     outputURL: crop9x16ClipURL,
-                    presetName: presetName
+                    presetName: presetName,
+                    muteAudio: muteAudio
                 )
             }
 
@@ -355,7 +386,8 @@ class VideoSnippetProcessor {
         format: OutputFormat,
         aspectRatio: AspectRatioCrop,
         outputURL: URL,
-        presetName: String = AVAssetExportPresetHighestQuality
+        presetName: String = AVAssetExportPresetHighestQuality,
+        muteAudio: Bool = false
     ) async throws {
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
             throw SnippetError.cannotLoadVideo
@@ -403,8 +435,9 @@ class VideoSnippetProcessor {
 
         try compositionVideoTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
 
-        // Add audio if available
-        if let audioTrack = try await asset.loadTracks(withMediaType: .audio).first,
+        // Add audio if available (skip when muting)
+        if !muteAudio,
+           let audioTrack = try await asset.loadTracks(withMediaType: .audio).first,
            let compositionAudioTrack = composition.addMutableTrack(
                withMediaType: .audio,
                preferredTrackID: kCMPersistentTrackID_Invalid

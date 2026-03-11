@@ -454,10 +454,12 @@ class SceneDetector: @unchecked Sendable {
         let windowSize = min(scenesPerClip, scenes.count)
 
         // Build all valid candidates by sliding a window of windowSize consecutive scenes
+        // Apply a 1-frame safety margin at scene boundaries to avoid transition flicker
+        let cutMargin = 0.042  // ~1 frame at 24fps
         var candidates: [(start: Double, end: Double)] = []
         for i in 0...(scenes.count - windowSize) {
-            let start = scenes[i].start
-            let end = scenes[i + windowSize - 1].end
+            let start = scenes[i].start + cutMargin
+            let end = scenes[i + windowSize - 1].end - cutMargin
             if end > start {
                 candidates.append((start: start, end: end))
             }

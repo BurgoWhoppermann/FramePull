@@ -207,11 +207,15 @@ class MarkingState: ObservableObject {
     }
 
     /// Snap a time to the nearest scene cut if within threshold
-    func snapToNearestCut(_ time: Double, threshold: Double = 1.0) -> Double {
+    /// When forOutPoint is true, offsets 1 frame before the cut to avoid transition flicker
+    /// When forOutPoint is false (in-point), offsets 1 frame after the cut
+    func snapToNearestCut(_ time: Double, threshold: Double = 1.0, forOutPoint: Bool = false) -> Double {
         guard let nearest = detectedCuts.min(by: { abs($0 - time) < abs($1 - time) }) else {
             return time
         }
-        return abs(nearest - time) <= threshold ? nearest : time
+        guard abs(nearest - time) <= threshold else { return time }
+        let safetyMargin = 0.042  // ~1 frame at 24fps
+        return forOutPoint ? nearest - safetyMargin : nearest + safetyMargin
     }
 
     /// Set the IN point for a new clip
@@ -224,7 +228,7 @@ class MarkingState: ObservableObject {
     func setOutPoint(at timestamp: Double, snapEnabled: Bool = false, isManual: Bool = false) {
         guard let inPoint = pendingInPoint else { return }
 
-        let time = snapEnabled ? snapToNearestCut(timestamp) : timestamp
+        let time = snapEnabled ? snapToNearestCut(timestamp, forOutPoint: true) : timestamp
         guard time > inPoint else { return }
 
         let clip = MarkedClip(inPoint: inPoint, outPoint: time, isManual: isManual)
@@ -307,11 +311,11 @@ class MarkingState: ObservableObject {
         var clip = markedClips[index]
 
         if let newIn = inPoint {
-            let snapped = snapEnabled ? snapToNearestCut(newIn) : newIn
+            let snapped = snapEnabled ? snapToNearestCut(newIn, forOutPoint: false) : newIn
             clip.inPoint = max(0, min(snapped, clip.outPoint - 0.1))
         }
         if let newOut = outPoint {
-            let snapped = snapEnabled ? snapToNearestCut(newOut) : newOut
+            let snapped = snapEnabled ? snapToNearestCut(newOut, forOutPoint: true) : newOut
             clip.outPoint = max(clip.inPoint + 0.1, snapped)
         }
         clip.isManual = true  // Dragging promotes to manual

@@ -189,6 +189,10 @@ struct ExportSettingsView: View {
                             .frame(width: 180)
                         }
                         .padding(.leading, 20)
+
+                        Toggle("Mute audio", isOn: $appState.muteAudio)
+                            .toggleStyle(.checkbox)
+                            .padding(.leading, 20)
                     }
                 }
 
@@ -385,7 +389,8 @@ struct ExportSettingsView: View {
                     export9x16: appState.export9x16,
                     presetName: appState.clipQuality.exportPreset,
                     lutCubeDimension: appState.lutEnabled ? appState.lutCubeDimension : nil,
-                    lutCubeData: appState.lutCubeData
+                    lutCubeData: appState.lutCubeData,
+                    muteAudio: appState.muteAudio
                 )
 
                 completedItems += 1
