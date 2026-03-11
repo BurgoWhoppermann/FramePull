@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import UniformTypeIdentifiers
+import CoreImage
 
 class VideoSnippetProcessor {
 
@@ -121,7 +122,9 @@ class VideoSnippetProcessor {
         duration: Double,
         format: OutputFormat,
         outputURL: URL,
-        presetName: String = AVAssetExportPresetHighestQuality
+        presetName: String = AVAssetExportPresetHighestQuality,
+        lutCubeDimension: Int? = nil,
+        lutCubeData: Data? = nil
     ) async throws {
         guard let exportSession = AVAssetExportSession(
             asset: asset,
@@ -137,6 +140,29 @@ class VideoSnippetProcessor {
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .mp4
         exportSession.timeRange = timeRange
+
+        // Apply LUT via AVVideoComposition if active
+        if let dim = lutCubeDimension, let data = lutCubeData {
+            let videoComposition = AVMutableVideoComposition(asset: asset) { request in
+                let source = request.sourceImage.clampedToExtent()
+                guard let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
+                    request.finish(with: source, context: nil)
+                    return
+                }
+                filter.setValue(dim, forKey: "inputCubeDimension")
+                filter.setValue(data, forKey: "inputCubeData")
+                filter.setValue(CGColorSpace(name: CGColorSpace.sRGB)!, forKey: "inputColorSpace")
+                filter.setValue(source, forKey: kCIInputImageKey)
+                let output = filter.outputImage?.cropped(to: request.sourceImage.extent) ?? source
+                request.finish(with: output, context: nil)
+            }
+            if let track = asset.tracks(withMediaType: .video).first {
+                videoComposition.renderSize = track.naturalSize
+                let fps = track.nominalFrameRate > 0 ? track.nominalFrameRate : 30
+                videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
+            }
+            exportSession.videoComposition = videoComposition
+        }
 
         await exportSession.export()
 
@@ -188,7 +214,9 @@ class VideoSnippetProcessor {
         to outputDirectory: URL,
         export4x5: Bool = false,
         export9x16: Bool = false,
-        presetName: String = AVAssetExportPresetHighestQuality
+        presetName: String = AVAssetExportPresetHighestQuality,
+        lutCubeDimension: Int? = nil,
+        lutCubeData: Data? = nil
     ) async throws {
         let asset = AVURLAsset(url: videoURL)
 
@@ -219,7 +247,9 @@ class VideoSnippetProcessor {
                 duration: duration,
                 format: format,
                 outputURL: clipURL,
-                presetName: presetName
+                presetName: presetName,
+                lutCubeDimension: lutCubeDimension,
+                lutCubeData: lutCubeData
             )
         }
 
@@ -235,7 +265,9 @@ class VideoSnippetProcessor {
                 frameRate: 15,
                 maxWidth: resolution.maxWidth,
                 quality: gifQuality,
-                outputURL: gifURL
+                outputURL: gifURL,
+                lutCubeDimension: lutCubeDimension,
+                lutCubeData: lutCubeData
             )
         }
 
@@ -270,7 +302,9 @@ class VideoSnippetProcessor {
                     maxWidth: resolution.maxWidth,
                     quality: gifQuality,
                     aspectRatio: .ratio4x5,
-                    outputURL: crop4x5GifURL
+                    outputURL: crop4x5GifURL,
+                    lutCubeDimension: lutCubeDimension,
+                    lutCubeData: lutCubeData
                 )
             }
         }
@@ -305,7 +339,9 @@ class VideoSnippetProcessor {
                     maxWidth: resolution.maxWidth,
                     quality: gifQuality,
                     aspectRatio: .ratio9x16,
-                    outputURL: crop9x16GifURL
+                    outputURL: crop9x16GifURL,
+                    lutCubeDimension: lutCubeDimension,
+                    lutCubeData: lutCubeData
                 )
             }
         }
@@ -429,7 +465,9 @@ class VideoSnippetProcessor {
         maxWidth: Int,
         quality: Double = 0.7,
         aspectRatio: AspectRatioCrop? = nil,
-        outputURL: URL
+        outputURL: URL,
+        lutCubeDimension: Int? = nil,
+        lutCubeData: Data? = nil
     ) async throws {
         let frameCount = Int(duration * Double(frameRate))
         guard frameCount >= 1 else {
@@ -474,7 +512,11 @@ class VideoSnippetProcessor {
             do {
                 let (cgImage, _) = try await imageGenerator.image(at: time)
                 let cropped = aspectRatio.map { ProcessingUtilities.cropImageToAspectRatio(cgImage, targetRatio: $0.ratio) } ?? cgImage
-                let outputImage = ProcessingUtilities.resizeImage(cropped, maxWidth: maxWidth)
+                var outputImage = ProcessingUtilities.resizeImage(cropped, maxWidth: maxWidth)
+                // Apply LUT color correction if active
+                if let dim = lutCubeDimension, let data = lutCubeData {
+                    outputImage = LUTProcessor.applyLUT(to: outputImage, cubeDimension: dim, cubeData: data) ?? outputImage
+                }
                 CGImageDestinationAddImage(destination, outputImage, frameProperties as CFDictionary)
             } catch {
                 throw SnippetError.exportFailed("Cannot extract frame at \(frameTime)s")

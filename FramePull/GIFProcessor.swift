@@ -44,6 +44,8 @@ class GIFProcessor {
         resolution: GIFResolution,
         quality: Double = 0.7,
         to outputDirectory: URL,
+        lutCubeDimension: Int? = nil,
+        lutCubeData: Data? = nil,
         progress: @escaping (Double, String) -> Void
     ) async throws {
         let asset = AVURLAsset(url: videoURL)
@@ -78,7 +80,9 @@ class GIFProcessor {
                 frameRate: frameRate,
                 maxWidth: resolution.maxWidth,
                 quality: quality,
-                outputURL: fileURL
+                outputURL: fileURL,
+                lutCubeDimension: lutCubeDimension,
+                lutCubeData: lutCubeData
             ) { frameProgress in
                 let overallProgress = gifProgress + (frameProgress / Double(totalCount))
                 progress(overallProgress, "Creating GIF \(gifIndex + 1) of \(totalCount) - frame \(Int(frameProgress * Double(frameRate) * spec.duration) + 1)...")
@@ -96,6 +100,8 @@ class GIFProcessor {
         maxWidth: Int,
         quality: Double,
         outputURL: URL,
+        lutCubeDimension: Int? = nil,
+        lutCubeData: Data? = nil,
         progress: @escaping (Double) -> Void
     ) async throws {
         let frameCount = Int(duration * Double(frameRate))
@@ -148,7 +154,12 @@ class GIFProcessor {
             do {
                 let (cgImage, _) = try await imageGenerator.image(at: time)
 
-                let outputImage = ProcessingUtilities.resizeImage(cgImage, maxWidth: maxWidth)
+                var outputImage = ProcessingUtilities.resizeImage(cgImage, maxWidth: maxWidth)
+
+                // Apply LUT color correction if active
+                if let dim = lutCubeDimension, let data = lutCubeData {
+                    outputImage = LUTProcessor.applyLUT(to: outputImage, cubeDimension: dim, cubeData: data) ?? outputImage
+                }
 
                 CGImageDestinationAddImage(destination, outputImage, frameProperties as CFDictionary)
             } catch {

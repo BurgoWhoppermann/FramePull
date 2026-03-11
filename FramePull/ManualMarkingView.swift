@@ -598,6 +598,118 @@ struct ManualMarkingView: View {
         }
     }
 
+    // MARK: - LUT Menu
+
+    /// Compact menu button for selecting a LUT — shows built-in and user folder LUTs
+    private var lutMenuButton: some View {
+        Menu {
+            // "None" option
+            Button(action: {
+                appState.clearLUT()
+                playerController.clearVideoComposition()
+            }) {
+                if appState.selectedLUTName == nil {
+                    Label("None", systemImage: "checkmark")
+                } else {
+                    Text("None")
+                }
+            }
+
+            let allLUTs = appState.availableLUTs
+            let builtIn = allLUTs.filter { $0.isBuiltIn }
+            let userLUTs = allLUTs.filter { !$0.isBuiltIn }
+
+            if !builtIn.isEmpty {
+                Divider()
+                Section("Built-in") {
+                    ForEach(builtIn, id: \.name) { lut in
+                        Button(action: {
+                            appState.loadLUT(name: lut.name, url: lut.url)
+                            updatePlayerLUT()
+                        }) {
+                            if appState.selectedLUTName == lut.name {
+                                Label(lut.name, systemImage: "checkmark")
+                            } else {
+                                Text(lut.name)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !userLUTs.isEmpty {
+                Divider()
+                Section("User") {
+                    ForEach(userLUTs, id: \.name) { lut in
+                        Button(action: {
+                            appState.loadLUT(name: lut.name, url: lut.url)
+                            updatePlayerLUT()
+                        }) {
+                            if appState.selectedLUTName == lut.name {
+                                Label(lut.name, systemImage: "checkmark")
+                            } else {
+                                Text(lut.name)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            Button(action: chooseUserLUTFolder) {
+                Label("Choose LUT Folder…", systemImage: "folder")
+            }
+
+            if appState.userLUTFolderURL != nil {
+                Button(action: {
+                    appState.userLUTFolderURL = nil
+                    // If the active LUT was from the user folder, clear it
+                    if let name = appState.selectedLUTName,
+                       !appState.availableLUTs.contains(where: { $0.name == name }) {
+                        appState.clearLUT()
+                        playerController.clearVideoComposition()
+                    }
+                }) {
+                    Label("Clear User Folder", systemImage: "folder.badge.minus")
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "camera.filters")
+                    .font(.caption)
+                Text(appState.selectedLUTName ?? "LUT")
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            .foregroundColor(appState.lutEnabled ? .framePullBlue : .secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private func chooseUserLUTFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose Folder"
+        panel.message = "Select a folder containing .cube LUT files"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            appState.userLUTFolderURL = url
+        }
+    }
+
+    private func updatePlayerLUT() {
+        if let data = appState.lutCubeData {
+            playerController.updateVideoComposition(cubeDimension: appState.lutCubeDimension, cubeData: data)
+        } else {
+            playerController.clearVideoComposition()
+        }
+    }
+
     // MARK: - Controls Bar
 
     private var controlsBar: some View {
@@ -656,6 +768,9 @@ struct ManualMarkingView: View {
                 }
                 .toggleStyle(.checkbox)
                 .controlSize(.small)
+
+                // LUT selector menu
+                lutMenuButton
 
                 if faceStillsCount > 0 && appState.stillPlacement == .preferFaces {
                     Image(systemName: "face.smiling")

@@ -224,6 +224,84 @@ class AppState: ObservableObject {
     // Snap clip in/out points to nearest scene cut
     @Published var snapToSceneCuts: Bool = true
 
+    // LUT (Look-Up Table) color correction
+    @Published var selectedLUTName: String? = nil {
+        didSet { UserDefaults.standard.set(selectedLUTName, forKey: "selectedLUTName") }
+    }
+    @Published var userLUTFolderURL: URL? = nil {
+        didSet {
+            if let url = userLUTFolderURL {
+                // Store as security-scoped bookmark so the folder remains accessible across launches
+                if let bookmark = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+                    UserDefaults.standard.set(bookmark, forKey: "userLUTFolderBookmark")
+                }
+            } else {
+                UserDefaults.standard.removeObject(forKey: "userLUTFolderBookmark")
+            }
+        }
+    }
+    var lutCubeDimension: Int = 0
+    var lutCubeData: Data? = nil
+    var lutEnabled: Bool { lutCubeData != nil }
+
+    /// All available LUTs: built-in (from app bundle) + user folder
+    var availableLUTs: [(name: String, url: URL, isBuiltIn: Bool)] {
+        var result: [(name: String, url: URL, isBuiltIn: Bool)] = []
+        // Built-in LUTs from app bundle
+        if let builtInDir = Bundle.main.resourceURL?.appendingPathComponent("LUTs") {
+            let builtIn = LUTProcessor.scanForLUTs(in: builtInDir)
+            result.append(contentsOf: builtIn.map { ($0.name, $0.url, true) })
+        }
+        // User LUTs from chosen folder
+        if let userDir = userLUTFolderURL {
+            _ = userDir.startAccessingSecurityScopedResource()
+            let userLUTs = LUTProcessor.scanForLUTs(in: userDir)
+            result.append(contentsOf: userLUTs.map { ($0.name, $0.url, false) })
+            userDir.stopAccessingSecurityScopedResource()
+        }
+        return result
+    }
+
+    /// Load and cache a LUT from a .cube file URL
+    func loadLUT(name: String, url: URL) {
+        _ = url.startAccessingSecurityScopedResource()
+        defer { url.stopAccessingSecurityScopedResource() }
+        do {
+            let (dim, data) = try LUTProcessor.parseCubeFile(at: url)
+            lutCubeDimension = dim
+            lutCubeData = data
+            selectedLUTName = name
+        } catch {
+            print("Failed to load LUT: \(error.localizedDescription)")
+            clearLUT()
+        }
+    }
+
+    /// Clear the active LUT
+    func clearLUT() {
+        lutCubeDimension = 0
+        lutCubeData = nil
+        selectedLUTName = nil
+    }
+
+    /// Restore persisted LUT settings on launch
+    private func restoreLUTSettings() {
+        // Restore user LUT folder from bookmark
+        if let bookmarkData = UserDefaults.standard.data(forKey: "userLUTFolderBookmark") {
+            var isStale = false
+            if let url = try? URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale) {
+                userLUTFolderURL = url
+            }
+        }
+        // Restore selected LUT name and re-load it
+        if let savedName = UserDefaults.standard.string(forKey: "selectedLUTName") {
+            // Find the LUT URL by name in available LUTs
+            if let match = availableLUTs.first(where: { $0.name == savedName }) {
+                loadLUT(name: match.name, url: match.url)
+            }
+        }
+    }
+
     init() {
         // Throttle forwarding to max 10Hz — prevents 20Hz time observer from causing
         // full app re-renders on every tick
@@ -232,6 +310,7 @@ class AppState: ObservableObject {
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
+        restoreLUTSettings()
     }
 
     /// Cancel any in-progress scene detection task

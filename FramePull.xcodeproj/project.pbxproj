@@ -23,6 +23,7 @@
 		A1ANALYZE02 /* AnalysisSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ANALYZE01 /* AnalysisSettingsView.swift */; };
 		A1PROCUTIL02 /* ProcessingUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1PROCUTIL01 /* ProcessingUtilities.swift */; };
 		A1VID0T02 /* VideoTutorial1.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A1VID0T01 /* VideoTutorial1.mp4 */; };
+		A1LUT002 /* LUTProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1LUT001 /* LUTProcessor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 		A1ANALYZE01 /* AnalysisSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisSettingsView.swift; sourceTree = "<group>"; };
 		A1PROCUTIL01 /* ProcessingUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingUtilities.swift; sourceTree = "<group>"; };
 		A1VID0T01 /* VideoTutorial1.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = VideoTutorial1.mp4; sourceTree = "<group>"; };
+		A1LUT001 /* LUTProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LUTProcessor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -81,6 +83,7 @@
 				A1000026 /* VideoSnippetProcessor.swift */,
 				A1000030 /* SceneDetector.swift */,
 				A1PROCUTIL01 /* ProcessingUtilities.swift */,
+				A1LUT001 /* LUTProcessor.swift */,
 				A1000028 /* Assets.xcassets */,
 				A1000007 /* Info.plist */,
 				A1000051 /* PrivacyInfo.xcprivacy */,
@@ -200,6 +203,7 @@
 				A1000037 /* ExportSettingsView.swift in Sources */,
 				A1ANALYZE02 /* AnalysisSettingsView.swift in Sources */,
 				A1PROCUTIL02 /* ProcessingUtilities.swift in Sources */,
+				A1LUT002 /* LUTProcessor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

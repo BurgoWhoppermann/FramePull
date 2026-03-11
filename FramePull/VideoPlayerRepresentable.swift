@@ -1,6 +1,7 @@
 import SwiftUI
 import AVKit
 import AppKit
+import CoreImage
 
 /// NSViewRepresentable wrapper for AVPlayerView with looping, keyboard, and click support
 struct VideoPlayerRepresentable: NSViewRepresentable {
@@ -297,6 +298,41 @@ class LoopingPlayerController: ObservableObject {
             boundaryObserver = nil
         }
         loopRange = nil
+    }
+
+    // MARK: - LUT Video Composition (real-time preview)
+
+    /// Apply a LUT to the video player preview using AVVideoComposition with CIFilter.
+    func updateVideoComposition(cubeDimension: Int, cubeData: Data) {
+        guard let asset = player.currentItem?.asset else { return }
+
+        let videoComposition = AVMutableVideoComposition(asset: asset) { request in
+            let source = request.sourceImage.clampedToExtent()
+            guard let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
+                request.finish(with: source, context: nil)
+                return
+            }
+            filter.setValue(cubeDimension, forKey: "inputCubeDimension")
+            filter.setValue(cubeData, forKey: "inputCubeData")
+            filter.setValue(CGColorSpace(name: CGColorSpace.sRGB)!, forKey: "inputColorSpace")
+            filter.setValue(source, forKey: kCIInputImageKey)
+            let output = filter.outputImage?.cropped(to: request.sourceImage.extent) ?? source
+            request.finish(with: output, context: nil)
+        }
+
+        // Match source video properties
+        if let track = asset.tracks(withMediaType: .video).first {
+            videoComposition.renderSize = track.naturalSize
+            let fps = track.nominalFrameRate > 0 ? track.nominalFrameRate : 30
+            videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
+        }
+
+        player.currentItem?.videoComposition = videoComposition
+    }
+
+    /// Remove LUT from video player preview
+    func clearVideoComposition() {
+        player.currentItem?.videoComposition = nil
     }
 
     func setRate(_ rate: Float) {

@@ -350,7 +350,9 @@ struct ExportSettingsView: View {
                 scale: appState.stillSize.scale,
                 format: appState.stillFormat,
                 export4x5: appState.export4x5,
-                export9x16: appState.export9x16
+                export9x16: appState.export9x16,
+                lutCubeDimension: appState.lutEnabled ? appState.lutCubeDimension : nil,
+                lutCubeData: appState.lutCubeData
             ) { progress, message in
                 Task { @MainActor in
                     let stillsProgress = progress * Double(stillsCount) / Double(totalItems)
@@ -381,7 +383,9 @@ struct ExportSettingsView: View {
                     to: outputDir,
                     export4x5: appState.export4x5,
                     export9x16: appState.export9x16,
-                    presetName: appState.clipQuality.exportPreset
+                    presetName: appState.clipQuality.exportPreset,
+                    lutCubeDimension: appState.lutEnabled ? appState.lutCubeDimension : nil,
+                    lutCubeData: appState.lutCubeData
                 )
 
                 completedItems += 1

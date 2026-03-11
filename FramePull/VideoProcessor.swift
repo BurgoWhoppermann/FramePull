@@ -483,6 +483,8 @@ class VideoProcessor {
         format: StillFormat = .jpeg,
         export4x5: Bool = false,
         export9x16: Bool = false,
+        lutCubeDimension: Int? = nil,
+        lutCubeData: Data? = nil,
         progress: @escaping (Double, String) -> Void = { _, _ in }
     ) async throws {
         guard !timestamps.isEmpty else { return }
@@ -518,6 +520,11 @@ class VideoProcessor {
                 var (cgImage, _) = try await imageGenerator.image(at: time)
                 if scale < 1.0 {
                     cgImage = scaleImage(cgImage, scale: scale)
+                }
+
+                // Apply LUT color correction if active
+                if let dim = lutCubeDimension, let data = lutCubeData {
+                    cgImage = LUTProcessor.applyLUT(to: cgImage, cubeDimension: dim, cubeData: data) ?? cgImage
                 }
 
                 // Save original
