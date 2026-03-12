@@ -70,16 +70,6 @@ Zero external dependencies. FramePull is built entirely on Apple frameworks:
 
 **Mac App Store** — *coming soon*
 
-**Build from source:**
-
-```bash
-git clone https://github.com/BurgoWhoppermann/FramePull.git
-cd FramePull
-xcodebuild -scheme FramePull -configuration Release
-```
-
-Requires Xcode 15+ and macOS 14+.
-
 ## Feedback
 
 FramePull is in active development. Bugs and feature requests welcome at [mail@carlooppermann.com](mailto:mail@carlooppermann.com).
