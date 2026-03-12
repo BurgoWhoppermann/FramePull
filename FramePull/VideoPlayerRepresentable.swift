@@ -306,28 +306,28 @@ class LoopingPlayerController: ObservableObject {
     func updateVideoComposition(cubeDimension: Int, cubeData: Data) {
         guard let asset = player.currentItem?.asset else { return }
 
-        let videoComposition = AVMutableVideoComposition(asset: asset) { request in
-            let source = request.sourceImage.clampedToExtent()
-            guard let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
-                request.finish(with: source, context: nil)
-                return
+        Task {
+            let videoComposition = try? await AVMutableVideoComposition.videoComposition(
+                with: asset,
+                applyingCIFiltersWithHandler: { request in
+                    let source = request.sourceImage.clampedToExtent()
+                    guard let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
+                        request.finish(with: source, context: nil)
+                        return
+                    }
+                    filter.setValue(cubeDimension, forKey: "inputCubeDimension")
+                    filter.setValue(cubeData, forKey: "inputCubeData")
+                    filter.setValue(CGColorSpace(name: CGColorSpace.sRGB)!, forKey: "inputColorSpace")
+                    filter.setValue(source, forKey: kCIInputImageKey)
+                    let output = filter.outputImage?.cropped(to: request.sourceImage.extent) ?? source
+                    request.finish(with: output, context: nil)
+                }
+            )
+            guard let videoComposition else { return }
+            await MainActor.run {
+                self.player.currentItem?.videoComposition = videoComposition
             }
-            filter.setValue(cubeDimension, forKey: "inputCubeDimension")
-            filter.setValue(cubeData, forKey: "inputCubeData")
-            filter.setValue(CGColorSpace(name: CGColorSpace.sRGB)!, forKey: "inputColorSpace")
-            filter.setValue(source, forKey: kCIInputImageKey)
-            let output = filter.outputImage?.cropped(to: request.sourceImage.extent) ?? source
-            request.finish(with: output, context: nil)
         }
-
-        // Match source video properties
-        if let track = asset.tracks(withMediaType: .video).first {
-            videoComposition.renderSize = track.naturalSize
-            let fps = track.nominalFrameRate > 0 ? track.nominalFrameRate : 30
-            videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
-        }
-
-        player.currentItem?.videoComposition = videoComposition
     }
 
     /// Remove LUT from video player preview

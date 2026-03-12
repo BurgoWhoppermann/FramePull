@@ -1,7 +1,7 @@
 import SwiftUI
 import AVKit
 
-struct BetaSplashView: View {
+struct SplashView: View {
     let version: String
     let build: String
     let onDismiss: () -> Void
@@ -34,14 +34,9 @@ struct BetaSplashView: View {
                 Text("FramePull")
                     .font(.title.weight(.bold))
 
-                Text("BETA")
-                    .font(.caption.weight(.heavy))
-                    .tracking(3)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(Color.framePullBlue)
-                    .cornerRadius(4)
+                Text("v\(version)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding(.top, 0)
             .padding(.bottom, 24)
@@ -118,23 +113,25 @@ struct BetaSplashView: View {
 
             Spacer()
 
-            // Build info + bug report
+            // Build info + feedback
             VStack(spacing: 4) {
-                Text("Build \(build)")
+                Text("In development — please contact us with bugs and feature requests")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .multilineTextAlignment(.center)
 
                 Button(action: {
-                    if let url = URL(string: "mailto:mail@carlooppermann.com?subject=FramePull%20Bug%20Report") {
+                    if let url = URL(string: "mailto:mail@carlooppermann.com?subject=FramePull%20Feedback") {
                         NSWorkspace.shared.open(url)
                     }
                 }) {
-                    Text("Found a bug? Please report to mail@carlooppermann.com")
+                    Text("mail@carlooppermann.com")
                         .font(.caption)
-                        .foregroundColor(.secondary.opacity(0.7))
+                        .foregroundColor(.framePullBlue.opacity(0.8))
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.horizontal, 28)
             .padding(.bottom, 8)
 
             Divider()

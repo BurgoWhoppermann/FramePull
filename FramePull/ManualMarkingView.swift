@@ -1745,6 +1745,10 @@ struct ManualTimelineView: View {
     @State private var hoveredClipEdge: (UUID, ClipEdge)? = nil
     @State private var hoveredClipBarId: UUID? = nil
 
+    // Zoom state
+    @State private var zoomLevel: Double = 1.0
+    @State private var scrollOffset: CGFloat = 0
+
     enum ClipEdge {
         case inPoint
         case outPoint
@@ -1803,9 +1807,17 @@ struct ManualTimelineView: View {
         56 + CGFloat(maxLane) * 22
     }
 
+    private var totalHeight: CGFloat {
+        timelineHeight + 20
+    }
+
     var body: some View {
         GeometryReader { geometry in
-            let width = geometry.size.width
+            let viewportWidth = geometry.size.width
+            VStack(spacing: 2) {
+            ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+            let width = viewportWidth * CGFloat(zoomLevel)
 
             ZStack(alignment: .topLeading) {
                 // Background track
@@ -1839,7 +1851,6 @@ struct ManualTimelineView: View {
 
                     // Clip range background — follows drag (bottom lane)
                     let isLooping = loopingClipId == clip.id
-                    let isBarHovered = hoveredClipBarId == clip.id
                     ZStack {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(barColor.opacity(isLooping ? 0.7 : (isDragging ? 0.6 : 0.4)))
@@ -2043,9 +2054,14 @@ struct ManualTimelineView: View {
                     .frame(width: 3, height: timelineHeight)
                     .position(x: playheadX, y: timelineHeight / 2)
                     .zIndex(200)
+
+                // Invisible anchor for scroll-to-playhead
+                Color.clear.frame(width: 1, height: 1)
+                    .id("playheadAnchor")
+                    .position(x: playheadX, y: timelineHeight / 2)
             }
             .coordinateSpace(name: "timeline")
-            .frame(height: timelineHeight)
+            .frame(width: width, height: timelineHeight)
             .clipped()
             .contentShape(Rectangle())
             .onHover { isHovering in
@@ -2078,8 +2094,50 @@ struct ManualTimelineView: View {
                         isDragging = false
                     }
             )
+            .background(
+                GeometryReader { inner in
+                    Color.clear.preference(
+                        key: TimelineScrollOffsetKey.self,
+                        value: inner.frame(in: .named("scroll")).minX
+                    )
+                }
+            )
+            } // ScrollView
+            .coordinateSpace(name: "scroll")
+            .onPreferenceChange(TimelineScrollOffsetKey.self) { value in
+                scrollOffset = -value
+            }
+            .onChange(of: zoomLevel) { _ in
+                DispatchQueue.main.async {
+                    proxy.scrollTo("playheadAnchor", anchor: .center)
+                }
+            }
+            .onChange(of: currentTime) { newTime in
+                guard zoomLevel > 1.0 else { return }
+                let playheadX = xPosition(for: newTime, width: viewportWidth * CGFloat(zoomLevel))
+                if playheadX < scrollOffset + 30 || playheadX > scrollOffset + viewportWidth - 30 {
+                    proxy.scrollTo("playheadAnchor", anchor: .center)
+                }
+            }
+            } // ScrollViewReader
+
+            // Zoom controls + scroll indicator
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+
+                Slider(value: $zoomLevel, in: 1...20)
+                    .controlSize(.mini)
+                    .frame(width: 80)
+
+                scrollIndicator(viewportWidth: viewportWidth)
+            }
+            .frame(height: 16)
+            .padding(.horizontal, 4)
+            } // VStack
         }
-        .frame(height: timelineHeight)
+        .frame(height: totalHeight)
     }
 
     private func nearestStillId(at xPosition: CGFloat, width: CGFloat) -> UUID? {
@@ -2100,6 +2158,44 @@ struct ManualTimelineView: View {
     private func xPosition(for time: Double, width: CGFloat) -> CGFloat {
         guard duration > 0 else { return 0 }
         return CGFloat((time / duration) * Double(width))
+    }
+
+    @ViewBuilder
+    private func scrollIndicator(viewportWidth: CGFloat) -> some View {
+        if zoomLevel > 1.01 {
+            let contentWidth = viewportWidth * CGFloat(zoomLevel)
+            let thumbFraction = viewportWidth / contentWidth
+            let offsetFraction = contentWidth > viewportWidth
+                ? scrollOffset / (contentWidth - viewportWidth)
+                : 0
+
+            GeometryReader { barGeo in
+                let barWidth = barGeo.size.width
+                let thumbWidth = max(12, barWidth * thumbFraction)
+                let maxOffset = barWidth - thumbWidth
+
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(height: 3)
+
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.secondary.opacity(0.35))
+                        .frame(width: thumbWidth, height: 3)
+                        .offset(x: min(maxOffset, max(0, offsetFraction * maxOffset)))
+                }
+                .frame(maxHeight: .infinity)
+            }
+        } else {
+            Spacer()
+        }
+    }
+}
+
+private struct TimelineScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

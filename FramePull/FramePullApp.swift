@@ -137,7 +137,7 @@ struct FramePullApp: App {
                     appState.videoURL = url
                 }
                 .sheet(isPresented: $showSplash) {
-                    BetaSplashView(
+                    SplashView(
                         version: currentVersion,
                         build: currentBuild,
                         onDismiss: {

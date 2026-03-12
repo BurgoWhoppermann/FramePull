@@ -139,7 +139,8 @@ class VideoSnippetProcessor {
         let exportAsset: AVAsset
         if muteAudio {
             let composition = AVMutableComposition()
-            if let videoTrack = asset.tracks(withMediaType: .video).first,
+            if let videoTracks = try? await asset.loadTracks(withMediaType: .video),
+               let videoTrack = videoTracks.first,
                let compositionVideoTrack = composition.addMutableTrack(
                    withMediaType: .video,
                    preferredTrackID: kCMPersistentTrackID_Invalid
@@ -170,24 +171,22 @@ class VideoSnippetProcessor {
 
         // Apply LUT via AVVideoComposition if active
         if let dim = lutCubeDimension, let data = lutCubeData {
-            let videoComposition = AVMutableVideoComposition(asset: exportAsset) { request in
-                let source = request.sourceImage.clampedToExtent()
-                guard let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
-                    request.finish(with: source, context: nil)
-                    return
+            let videoComposition = try? await AVMutableVideoComposition.videoComposition(
+                with: exportAsset,
+                applyingCIFiltersWithHandler: { request in
+                    let source = request.sourceImage.clampedToExtent()
+                    guard let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
+                        request.finish(with: source, context: nil)
+                        return
+                    }
+                    filter.setValue(dim, forKey: "inputCubeDimension")
+                    filter.setValue(data, forKey: "inputCubeData")
+                    filter.setValue(CGColorSpace(name: CGColorSpace.sRGB)!, forKey: "inputColorSpace")
+                    filter.setValue(source, forKey: kCIInputImageKey)
+                    let output = filter.outputImage?.cropped(to: request.sourceImage.extent) ?? source
+                    request.finish(with: output, context: nil)
                 }
-                filter.setValue(dim, forKey: "inputCubeDimension")
-                filter.setValue(data, forKey: "inputCubeData")
-                filter.setValue(CGColorSpace(name: CGColorSpace.sRGB)!, forKey: "inputColorSpace")
-                filter.setValue(source, forKey: kCIInputImageKey)
-                let output = filter.outputImage?.cropped(to: request.sourceImage.extent) ?? source
-                request.finish(with: output, context: nil)
-            }
-            if let track = exportAsset.tracks(withMediaType: .video).first {
-                videoComposition.renderSize = track.naturalSize
-                let fps = track.nominalFrameRate > 0 ? track.nominalFrameRate : 30
-                videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
-            }
+            )
             exportSession.videoComposition = videoComposition
         }
 
