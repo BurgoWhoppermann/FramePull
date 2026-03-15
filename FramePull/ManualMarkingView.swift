@@ -197,6 +197,8 @@ struct ManualMarkingView: View {
                     return nil
                 default:
                     if event.keyCode == 53 { // Escape
+                        // Let ESC through when a sheet is attached (e.g. keyboard cheat sheet)
+                        if NSApp.mainWindow?.sheets.isEmpty == false { return event }
                         ms.cancelPendingInPoint()
                         return nil
                     } else if event.keyCode == 51 || event.keyCode == 117 { // Backspace / Forward Delete
@@ -1303,13 +1305,21 @@ struct ManualMarkingView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.secondary)
                 HStack(spacing: 4) {
-                    Text("More")
+                    Text("Fewer")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .frame(width: 32, alignment: .trailing)
-                    Slider(value: $appState.detectionThreshold, in: 0.10...0.70, step: 0.05)
-                        .tint(.framePullBlue)
-                    Text("Fewer")
+                    // Invert so slider-right = lower threshold = more cuts detected
+                    Slider(
+                        value: Binding(
+                            get: { 0.80 - appState.detectionThreshold },
+                            set: { appState.detectionThreshold = 0.80 - $0 }
+                        ),
+                        in: 0.10...0.70,
+                        step: 0.05
+                    )
+                    .tint(.framePullBlue)
+                    Text("More")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .frame(width: 36, alignment: .leading)
@@ -1747,7 +1757,9 @@ struct ManualTimelineView: View {
 
     // Zoom state
     @State private var zoomLevel: Double = 1.0
-    @State private var scrollOffset: CGFloat = 0
+
+    // Scroll offset frozen at drag-start so the view doesn't shift under the user's cursor
+    @State private var dragStartScrollOffset: CGFloat = 0
 
     enum ClipEdge {
         case inPoint
@@ -1814,10 +1826,9 @@ struct ManualTimelineView: View {
     var body: some View {
         GeometryReader { geometry in
             let viewportWidth = geometry.size.width
-            VStack(spacing: 2) {
-            ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
             let width = viewportWidth * CGFloat(zoomLevel)
+            let scrollOffset = computedScrollOffset(contentWidth: width, viewportWidth: viewportWidth)
+            VStack(spacing: 2) {
 
             ZStack(alignment: .topLeading) {
                 // Background track
@@ -1899,6 +1910,7 @@ struct ManualTimelineView: View {
                         .highPriorityGesture(
                             DragGesture(minimumDistance: 1, coordinateSpace: .named("timeline"))
                                 .onChanged { value in
+                                    if draggingClipId != clip.id { dragStartScrollOffset = scrollOffset }
                                     draggingClipId = clip.id
                                     draggingClipEdge = .inPoint
                                     clipDragOffset = value.location.x - inX
@@ -1950,6 +1962,7 @@ struct ManualTimelineView: View {
                         .highPriorityGesture(
                             DragGesture(minimumDistance: 1, coordinateSpace: .named("timeline"))
                                 .onChanged { value in
+                                    if draggingClipId != clip.id { dragStartScrollOffset = scrollOffset }
                                     draggingClipId = clip.id
                                     draggingClipEdge = .outPoint
                                     clipDragOffset = value.location.x - outX
@@ -2026,6 +2039,7 @@ struct ManualTimelineView: View {
                             DragGesture(minimumDistance: 1, coordinateSpace: .named("timeline"))
                                 .onChanged { value in
                                     if draggingStillId != still.id {
+                                        dragStartScrollOffset = scrollOffset
                                         NSCursor.closedHand.push()
                                     }
                                     draggingStillId = still.id
@@ -2055,13 +2069,14 @@ struct ManualTimelineView: View {
                     .position(x: playheadX, y: timelineHeight / 2)
                     .zIndex(200)
 
-                // Invisible anchor for scroll-to-playhead
-                Color.clear.frame(width: 1, height: 1)
-                    .id("playheadAnchor")
-                    .position(x: playheadX, y: timelineHeight / 2)
             }
             .coordinateSpace(name: "timeline")
             .frame(width: width, height: timelineHeight)
+            // Shift content so the playhead stays centred; offset IS included in the
+            // "timeline" coordinate space transform, so all gesture coordinates remain
+            // in content space — no gesture math changes needed.
+            .offset(x: -scrollOffset)
+            .frame(width: viewportWidth, alignment: .leading)
             .clipped()
             .contentShape(Rectangle())
             .onHover { isHovering in
@@ -2094,32 +2109,6 @@ struct ManualTimelineView: View {
                         isDragging = false
                     }
             )
-            .background(
-                GeometryReader { inner in
-                    Color.clear.preference(
-                        key: TimelineScrollOffsetKey.self,
-                        value: inner.frame(in: .named("scroll")).minX
-                    )
-                }
-            )
-            } // ScrollView
-            .coordinateSpace(name: "scroll")
-            .onPreferenceChange(TimelineScrollOffsetKey.self) { value in
-                scrollOffset = -value
-            }
-            .onChange(of: zoomLevel) { _ in
-                DispatchQueue.main.async {
-                    proxy.scrollTo("playheadAnchor", anchor: .center)
-                }
-            }
-            .onChange(of: currentTime) { newTime in
-                guard zoomLevel > 1.0 else { return }
-                let playheadX = xPosition(for: newTime, width: viewportWidth * CGFloat(zoomLevel))
-                if playheadX < scrollOffset + 30 || playheadX > scrollOffset + viewportWidth - 30 {
-                    proxy.scrollTo("playheadAnchor", anchor: .center)
-                }
-            }
-            } // ScrollViewReader
 
             // Zoom controls + scroll indicator
             HStack(spacing: 6) {
@@ -2131,7 +2120,7 @@ struct ManualTimelineView: View {
                     .controlSize(.mini)
                     .frame(width: 80)
 
-                scrollIndicator(viewportWidth: viewportWidth)
+                scrollIndicator(viewportWidth: viewportWidth, contentWidth: width, scrollOffset: scrollOffset)
             }
             .frame(height: 16)
             .padding(.horizontal, 4)
@@ -2160,10 +2149,21 @@ struct ManualTimelineView: View {
         return CGFloat((time / duration) * Double(width))
     }
 
+    /// Returns the scroll offset that keeps the playhead centred in the viewport.
+    /// During marker drags the offset is frozen so the view doesn't jump under the cursor.
+    private func computedScrollOffset(contentWidth: CGFloat, viewportWidth: CGFloat) -> CGFloat {
+        guard zoomLevel > 1.0, contentWidth > viewportWidth else { return 0 }
+        if draggingStillId != nil || draggingClipId != nil {
+            return dragStartScrollOffset
+        }
+        let playheadX = xPosition(for: currentTime, width: contentWidth)
+        let raw = playheadX - viewportWidth / 2
+        return max(0, min(contentWidth - viewportWidth, raw))
+    }
+
     @ViewBuilder
-    private func scrollIndicator(viewportWidth: CGFloat) -> some View {
+    private func scrollIndicator(viewportWidth: CGFloat, contentWidth: CGFloat, scrollOffset: CGFloat) -> some View {
         if zoomLevel > 1.01 {
-            let contentWidth = viewportWidth * CGFloat(zoomLevel)
             let thumbFraction = viewportWidth / contentWidth
             let offsetFraction = contentWidth > viewportWidth
                 ? scrollOffset / (contentWidth - viewportWidth)
@@ -2198,13 +2198,6 @@ struct ManualTimelineView: View {
         } else {
             Spacer()
         }
-    }
-}
-
-private struct TimelineScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 
@@ -2285,6 +2278,7 @@ struct KeyboardShortcutsView: View {
                 .padding(.bottom, 14)
         }
         .frame(width: 400, height: 520)
+        .onExitCommand { dismiss() }
     }
 }
 
