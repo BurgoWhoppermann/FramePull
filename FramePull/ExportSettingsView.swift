@@ -426,6 +426,7 @@ struct ExportSettingsView: View {
                     startTime: clip.inPoint,
                     duration: clip.duration,
                     resolution: appState.gifResolution,
+                    gifFrameRate: appState.gifFrameRate,
                     gifQuality: appState.gifQuality,
                     exportGIF: appState.exportGIF,
                     exportMP4: appState.exportMP4,

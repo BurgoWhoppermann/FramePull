@@ -1626,6 +1626,8 @@ struct ManualMarkingView: View {
                     cachedFaceTimestamps = timestamps
                 }
             }
+            // Face path handles its own undo bookkeeping inside the Task above
+            return
         } else {
             // Synchronous: spread evenly or per scene
             appState.initializeStillPositions(from: effectiveScenes, count: appState.stillCount)

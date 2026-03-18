@@ -248,7 +248,17 @@ class AppState: ObservableObject {
     @Published var muteAudio: Bool = false
 
     // Output
-    @Published var saveURL: URL?
+    @Published var saveURL: URL? {
+        didSet {
+            if let url = saveURL {
+                if let bookmark = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+                    UserDefaults.standard.set(bookmark, forKey: "outputFolderBookmark")
+                }
+            } else {
+                UserDefaults.standard.removeObject(forKey: "outputFolderBookmark")
+            }
+        }
+    }
 
     // Scene detection (cached)
     @Published var detectedScenes: [(start: Double, end: Double)] = []
@@ -347,6 +357,16 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Restore persisted output folder from bookmark
+    private func restoreOutputFolder() {
+        if let bookmarkData = UserDefaults.standard.data(forKey: "outputFolderBookmark") {
+            var isStale = false
+            if let url = try? URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale) {
+                saveURL = url
+            }
+        }
+    }
+
     // MARK: - Unified Undo Stack
 
     /// All undoable actions across the app (markers, LUT, settings regeneration)
@@ -438,6 +458,7 @@ class AppState: ObservableObject {
         }
 
         restoreLUTSettings()
+        restoreOutputFolder()
     }
 
     /// Cancel any in-progress scene detection task
