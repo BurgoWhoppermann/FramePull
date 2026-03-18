@@ -120,8 +120,22 @@ extension Color {
     static let framePullLightBlue = Color(red: 0.29, green: 0.56, blue: 0.85).opacity(0.1)
 }
 
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            sender.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(self)
+        }
+        return true
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        application.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(self)
+    }
+}
+
 @main
 struct FramePullApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState()
     @State private var showSplash = true  // Always show on launch
 
@@ -149,12 +163,18 @@ struct FramePullApp: App {
                         }
                     )
                 }
+                .handlesExternalEvents(preferring: Set(["main"]), allowing: Set(["main"]))
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .defaultSize(width: 900, height: 800)
         .commands {
-            CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .newItem) {
+                Button("Show FramePull Window") {
+                    NSApplication.shared.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                }
+                .keyboardShortcut("n", modifiers: [.command])
+            }
             CommandGroup(replacing: .saveItem) {
                 Button("Export…") {
                     NotificationCenter.default.post(name: .triggerExport, object: nil)
