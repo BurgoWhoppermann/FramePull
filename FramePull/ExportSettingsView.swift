@@ -287,7 +287,9 @@ struct ExportSettingsView: View {
             MarkerPreviewView(
                 videoURL: videoURL,
                 markingState: appState.markingState,
-                reframeRatio: appState.export9x16 ? .ratio9x16 : (appState.export4x5 ? .ratio4x5 : nil)
+                reframeRatio: appState.export9x16 ? .ratio9x16 : (appState.export4x5 ? .ratio4x5 : nil),
+                showStills: appState.exportStillsEnabled,
+                showClips: appState.exportMovingClipsEnabled
             )
         }
     }

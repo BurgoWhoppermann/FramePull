@@ -110,8 +110,12 @@ struct ManualMarkingView: View {
                 // Marked items list — low priority so it compresses before the export button hides
                 ScrollView(showsIndicators: true) {
                     VStack(spacing: 16) {
-                        stillsSection
-                        clipsSection
+                        if appState.exportStillsEnabled {
+                            stillsSection
+                        }
+                        if appState.exportMovingClipsEnabled {
+                            clipsSection
+                        }
                     }
                     .padding()
                 }
@@ -2339,9 +2343,11 @@ struct MarkerPreviewView: View {
     @ObservedObject var markingState: MarkingState
     /// Which aspect ratio to show the reframe slider for (nil = no reframe, 9:16 takes priority over 4:5)
     let reframeRatio: VideoSnippetProcessor.AspectRatioCrop?
+    var showStills: Bool = true
+    var showClips: Bool = true
 
-    private var markedStills: [MarkedStill] { markingState.markedStills }
-    private var markedClips: [MarkedClip] { markingState.markedClips }
+    private var markedStills: [MarkedStill] { showStills ? markingState.markedStills : [] }
+    private var markedClips: [MarkedClip] { showClips ? markingState.markedClips : [] }
 
     @Environment(\.dismiss) private var dismiss
 
