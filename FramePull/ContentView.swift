@@ -87,7 +87,7 @@ struct ContentView: View {
     // MARK: - Version Footer
     private var versionFooter: some View {
         HStack {
-            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"))")
                 .font(.system(size: 9))
                 .foregroundColor(.secondary.opacity(0.6))
 
