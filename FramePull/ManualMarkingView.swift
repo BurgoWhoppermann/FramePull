@@ -63,6 +63,7 @@ struct ManualMarkingView: View {
     @State private var faceSearchMessage: String = ""
     @State private var faceStillsCount: Int = 0
     @State private var showFaceDetectionAlert = false
+    @State private var showCutDetectionHint = false
     @State private var cachedFaceTimestamps: [Double]? = nil
     @State private var keyMonitor: Any? = nil
     @State private var stillsExpanded = false
@@ -311,6 +312,20 @@ struct ManualMarkingView: View {
         } message: {
             Text("\"Prefer faces\" searches each scene for the best face frame. Run cut detection first so scenes can be analyzed individually.")
         }
+        .alert("Cut Detection Recommended", isPresented: $showCutDetectionHint) {
+            Button("Detect Cuts") {
+                showCutDetectionPopover = true
+            }
+            Button("Skip", role: .cancel) {
+                withAnimation(.easeInOut(duration: 0.2)) { showAnalysisDialog = true }
+                if !hasGenerated {
+                    generateMarkersFromSettings()
+                    hasGenerated = true
+                }
+            }
+        } message: {
+            Text("Auto-generate works best with detected scene cuts. Without them, the entire video is treated as one scene.\n\nRun cut detection first?")
+        }
         .alert("Export Complete", isPresented: $showExportComplete) {
             Button("Open Folder") {
                 if let url = appState.saveURL {
@@ -386,10 +401,16 @@ struct ManualMarkingView: View {
             }
 
             Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) { showAnalysisDialog.toggle() }
-                if showAnalysisDialog && !hasGenerated {
-                    generateMarkersFromSettings()
-                    hasGenerated = true
+                if showAnalysisDialog {
+                    withAnimation(.easeInOut(duration: 0.2)) { showAnalysisDialog = false }
+                } else if !appState.scenesDetected {
+                    showCutDetectionHint = true
+                } else {
+                    withAnimation(.easeInOut(duration: 0.2)) { showAnalysisDialog = true }
+                    if !hasGenerated {
+                        generateMarkersFromSettings()
+                        hasGenerated = true
+                    }
                 }
             }) {
                 Label("Auto-Generate", systemImage: "sparkles")
