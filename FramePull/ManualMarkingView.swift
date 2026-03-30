@@ -1727,7 +1727,8 @@ struct ManualMarkingView: View {
             sceneRanges: effectiveScenes
         )
         for spec in clipSpecs {
-            let clip = MarkedClip(inPoint: spec.start, outPoint: spec.start + spec.duration, isManual: false)
+            let frameDuration = 1.0 / 25.0
+            let clip = MarkedClip(inPoint: spec.start + frameDuration, outPoint: spec.start + spec.duration - frameDuration, isManual: false)
             markingState.markedClips.append(clip)
         }
         markingState.markedClips.sort { $0.inPoint < $1.inPoint }
