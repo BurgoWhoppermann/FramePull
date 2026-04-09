@@ -25,6 +25,7 @@
 		A1LUTF02 /* LUTs in Resources */ = {isa = PBXBuildFile; fileRef = A1LUTF01 /* LUTs */; };
 		A1ONBOARD02 /* OnboardingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ONBOARD01 /* OnboardingOverlay.swift */; };
 		A1TIMELINE02 /* ManualTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1TIMELINE01 /* ManualTimelineView.swift */; };
+		A1PREVIEW02 /* MarkerPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1PREVIEW01 /* MarkerPreviewView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +49,7 @@
 		A1LUTF01 /* LUTs */ = {isa = PBXFileReference; lastKnownFileType = folder; path = LUTs; sourceTree = "<group>"; };
 		A1ONBOARD01 /* OnboardingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingOverlay.swift; sourceTree = "<group>"; };
 		A1TIMELINE01 /* ManualTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualTimelineView.swift; sourceTree = "<group>"; };
+		A1PREVIEW01 /* MarkerPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkerPreviewView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,6 +78,7 @@
 				A1000004 /* ContentView.swift */,
 				A1000036 /* ManualMarkingView.swift */,
 				A1TIMELINE01 /* ManualTimelineView.swift */,
+				A1PREVIEW01 /* MarkerPreviewView.swift */,
 				A1SPLASH01 /* BetaSplashView.swift */,
 				A1000038 /* ExportSettingsView.swift */,
 				A1000032 /* MarkingState.swift */,
@@ -208,6 +211,7 @@
 				A1LUT002 /* LUTProcessor.swift in Sources */,
 				A1ONBOARD02 /* OnboardingOverlay.swift in Sources */,
 				A1TIMELINE02 /* ManualTimelineView.swift in Sources */,
+				A1PREVIEW02 /* MarkerPreviewView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
