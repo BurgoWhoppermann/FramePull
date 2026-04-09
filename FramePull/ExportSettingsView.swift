@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 
 struct ExportSettingsView: View {
-    private static let appIcon = NSApplication.shared.applicationIconImage.copy() as! NSImage
+    private static let appIcon = (NSApplication.shared.applicationIconImage.copy() as? NSImage) ?? NSImage()
 
     let videoURL: URL
     let stillCount: Int
@@ -358,8 +358,8 @@ struct ExportSettingsView: View {
             )
         }
         let totalBytes = perClipBytes.reduce(0, +)
-        let minBytes = perClipBytes.min()!
-        let maxBytes = perClipBytes.max()!
+        guard let minBytes = perClipBytes.min(),
+              let maxBytes = perClipBytes.max() else { return "" }
 
         if clips.count == 1 {
             return "\(formatBytes(totalBytes)) total (1 clip)"

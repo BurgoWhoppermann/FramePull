@@ -3,7 +3,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    private static let appIcon = NSApplication.shared.applicationIconImage.copy() as! NSImage
+    private static let appIcon = (NSApplication.shared.applicationIconImage.copy() as? NSImage) ?? NSImage()
 
     @EnvironmentObject var appState: AppState
     @State private var showError: Bool = false

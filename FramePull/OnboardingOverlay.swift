@@ -381,7 +381,7 @@ private struct OnboardingTooltipCard: View {
 
 private struct ExportDialogueMockup: View {
     private static let appIcon: NSImage = {
-        let icon = NSApplication.shared.applicationIconImage.copy() as! NSImage
+        let icon = (NSApplication.shared.applicationIconImage.copy() as? NSImage) ?? NSImage()
         return icon
     }()
 
