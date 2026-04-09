@@ -5,6 +5,23 @@ import AppKit
 
 class SceneDetector: @unchecked Sendable {
 
+    // Pre-allocated context for 96x96 downsampling (to avoid allocating per frame)
+    private let histogramContextLock = NSLock()
+    private let reusedHistogramContext: CGContext? = {
+        let size = 96
+        guard let context = CGContext(
+            data: nil,
+            width: size,
+            height: size,
+            bitsPerComponent: 8,
+            bytesPerRow: size * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .low
+        return context
+    }()
+
     enum SceneDetectorError: LocalizedError {
         case cannotLoadVideo
         case cannotGetDuration
@@ -139,11 +156,17 @@ class SceneDetector: @unchecked Sendable {
     /// - Returns: Normalized histogram array (512 bins, sums to 1.0)
     func computeHistogram(for image: CGImage) -> [Double] {
         let downsampleSize = 96
+        
+        histogramContextLock.lock()
+        defer { histogramContextLock.unlock() }
 
-        guard let context = createDownsampledContext(image, size: downsampleSize),
+        guard let context = reusedHistogramContext,
               let data = context.data else {
             return [Double](repeating: 0.0, count: 512)
         }
+
+        // Draw image into the pre-allocated context
+        context.draw(image, in: CGRect(x: 0, y: 0, width: downsampleSize, height: downsampleSize))
 
         let pixelCount = downsampleSize * downsampleSize
         return computeColorHistogram(data: data, pixelCount: pixelCount)
@@ -184,30 +207,6 @@ class SceneDetector: @unchecked Sendable {
         // Clamp to [0,1] to handle floating point imprecision
         let distance = sqrt(max(0.0, 1.0 - bcCoefficient))
         return min(1.0, distance)
-    }
-
-    /// Create a downsampled RGB context from an image for fast comparison
-    /// - Parameters:
-    ///   - image: Source image
-    ///   - size: Target size (both width and height)
-    /// - Returns: CGContext with the downsampled image drawn, or nil on failure
-    private func createDownsampledContext(_ image: CGImage, size: Int) -> CGContext? {
-        guard let context = CGContext(
-            data: nil,
-            width: size,
-            height: size,
-            bitsPerComponent: 8,
-            bytesPerRow: size * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            return nil
-        }
-
-        context.interpolationQuality = .low
-        context.draw(image, in: CGRect(x: 0, y: 0, width: size, height: size))
-
-        return context
     }
 
     /// Divide video into scene ranges based on detected cuts
