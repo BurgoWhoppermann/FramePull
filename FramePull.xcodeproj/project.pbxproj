@@ -26,6 +26,7 @@
 		A1ONBOARD02 /* OnboardingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ONBOARD01 /* OnboardingOverlay.swift */; };
 		A1TIMELINE02 /* ManualTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1TIMELINE01 /* ManualTimelineView.swift */; };
 		A1PREVIEW02 /* MarkerPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1PREVIEW01 /* MarkerPreviewView.swift */; };
+		A1KBSHORT02 /* KeyboardShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1KBSHORT01 /* KeyboardShortcutsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +51,7 @@
 		A1ONBOARD01 /* OnboardingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingOverlay.swift; sourceTree = "<group>"; };
 		A1TIMELINE01 /* ManualTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualTimelineView.swift; sourceTree = "<group>"; };
 		A1PREVIEW01 /* MarkerPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkerPreviewView.swift; sourceTree = "<group>"; };
+		A1KBSHORT01 /* KeyboardShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcutsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -79,6 +81,7 @@
 				A1000036 /* ManualMarkingView.swift */,
 				A1TIMELINE01 /* ManualTimelineView.swift */,
 				A1PREVIEW01 /* MarkerPreviewView.swift */,
+				A1KBSHORT01 /* KeyboardShortcutsView.swift */,
 				A1SPLASH01 /* BetaSplashView.swift */,
 				A1000038 /* ExportSettingsView.swift */,
 				A1000032 /* MarkingState.swift */,
@@ -212,6 +215,7 @@
 				A1ONBOARD02 /* OnboardingOverlay.swift in Sources */,
 				A1TIMELINE02 /* ManualTimelineView.swift in Sources */,
 				A1PREVIEW02 /* MarkerPreviewView.swift in Sources */,
+				A1KBSHORT02 /* KeyboardShortcutsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
