@@ -91,28 +91,24 @@ class VideoProcessor {
         // Extract frames at the pre-refined timestamps
         var savedCount = 0
 
-        for (index, timestamp) in timestamps.enumerated() {
+        let times = timestamps.map { CMTime(seconds: $0, preferredTimescale: 600) }
+        var index = 0
+
+        for await result in imageGenerator.images(for: times) {
             progress(Double(index) / Double(count), "Extracting frame \(index + 1) of \(count)...")
 
-            let time = CMTime(seconds: timestamp, preferredTimescale: 600)
-            let cgImage: CGImage
-            do {
-                let (image, _) = try await imageGenerator.image(at: time)
-                cgImage = image
-            } catch {
+            switch result {
+            case .success(_, let image, _):
+                var finalImage = image
+                if scale < 1.0 {
+                    finalImage = scaleImage(finalImage, scale: scale)
+                }
+                try saveFrame(finalImage, index: startingIndex + index - 1, videoName: videoName, outputDirectory: outputDirectory, format: format)
+            case .failure(let time, _):
                 throw ProcessingError.cannotGenerateImage(time: time)
             }
 
-            var finalImage = cgImage
-
-            // Apply scale if needed
-            if scale < 1.0 {
-                finalImage = scaleImage(finalImage, scale: scale)
-            }
-
-            // Save with specified format, index continuing from previous extractions
-            try saveFrame(finalImage, index: startingIndex + savedCount - 1, videoName: videoName, outputDirectory: outputDirectory, format: format)
-            savedCount += 1
+            index += 1
         }
 
         progress(1.0, "Complete!")
@@ -311,23 +307,24 @@ class VideoProcessor {
             var framesExtracted = 0
             var facesFound = 0
 
-            for i in 1...sampleCount {
-                if Task.isCancelled { break }
-                let t = scene.start + step * Double(i)
-                let cmTime = CMTime(seconds: t, preferredTimescale: 600)
+            let frameTimes = (1...sampleCount).map { i in
+                CMTime(seconds: scene.start + step * Double(i), preferredTimescale: 600)
+            }
 
-                do {
-                    let (cgImage, _) = try await generator.image(at: cmTime)
+            for await result in generator.images(for: frameTimes) {
+                if Task.isCancelled { break }
+                switch result {
+                case .success(let cmTime, let cgImage, _):
                     framesExtracted += 1
+                    let t = CMTimeGetSeconds(cmTime)
                     guard hasFace(in: cgImage) else { continue }
                     facesFound += 1
                     let sharpness = computeSharpness(of: cgImage)
                     faceCandidates.append((time: t, sharpness: sharpness))
-                } catch {
+                case .failure(let cmTime, let error):
                     #if DEBUG
-                    print("[Prefer Faces] Frame extraction failed at \(String(format: "%.2f", t))s: \(error.localizedDescription)")
+                    print("[Prefer Faces] Frame extraction failed at \(CMTimeGetSeconds(cmTime))s: \(error.localizedDescription)")
                     #endif
-                    continue
                 }
             }
 
@@ -438,11 +435,12 @@ class VideoProcessor {
         var bestFace: (time: Double, sharpness: Double)?   // best frame WITH a face
         var bestOverall: (time: Double, sharpness: Double)? // best frame regardless
 
-        for candidateTime in candidateTimes {
-            let time = CMTime(seconds: candidateTime, preferredTimescale: 600)
+        let frameTimes = candidateTimes.map { CMTime(seconds: $0, preferredTimescale: 600) }
 
-            do {
-                let (cgImage, _) = try await generator.image(at: time)
+        for await result in generator.images(for: frameTimes) {
+            switch result {
+            case .success(let cmTime, let cgImage, _):
+                let candidateTime = CMTimeGetSeconds(cmTime)
                 let sharpness = computeSharpness(of: cgImage)
 
                 // Track best overall (fallback)
@@ -456,7 +454,7 @@ class VideoProcessor {
                         bestFace = (time: candidateTime, sharpness: sharpness)
                     }
                 }
-            } catch {
+            case .failure:
                 continue
             }
         }
@@ -513,16 +511,17 @@ class VideoProcessor {
         // Find next available index so re-exports never overwrite existing files
         let stillsDir = ProcessingUtilities.ensureSubdirectory(outputDirectory, path: "stills")
         let startingIndex = ProcessingUtilities.findNextAvailableIndex(in: stillsDir, prefix: "\(videoName)_still", suffix: ".\(format.fileExtension)")
+        let times = paired.map { CMTime(seconds: $0.0, preferredTimescale: 600) }
+        var index = 0
 
-        for (index, pair) in paired.enumerated() {
-            let (timestamp, reframeOffset) = pair
+        for await result in imageGenerator.images(for: times) {
+            let (_, reframeOffset) = paired[index]
             let fileIndex = startingIndex + index - 1  // saveFrame uses index+1 for filename
             progress(Double(index) / Double(timestamps.count), "Extracting still \(index + 1) of \(timestamps.count)...")
 
-            let time = CMTime(seconds: timestamp, preferredTimescale: 600)
-
-            do {
-                var (cgImage, _) = try await imageGenerator.image(at: time)
+            switch result {
+            case .success(_, let image, _):
+                var cgImage = image
                 if scale < 1.0 {
                     cgImage = scaleImage(cgImage, scale: scale)
                 }
@@ -547,9 +546,11 @@ class VideoProcessor {
                     let cropped = ProcessingUtilities.cropImageToAspectRatio(cgImage, targetRatio: 9.0 / 16.0, horizontalOffset: reframeOffset)
                     try saveFrame(cropped, index: fileIndex, videoName: videoName, outputDirectory: outputDirectory, format: format, subdirectory: "stills/9x16")
                 }
-            } catch {
-                throw ProcessingError.cannotGenerateImage(time: time)
+            case .failure(let time, _):
+                print("Failed to extract frame at \(CMTimeGetSeconds(time))")
             }
+
+            index += 1
         }
 
         progress(1.0, "Complete!")

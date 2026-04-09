@@ -578,29 +578,27 @@ struct MarkerPreviewView: View {
         let total     = max(1, Double(stills.count + clipThumb.count))
         var done      = 0.0
 
+        let allItems = stills.map { (key: "still_\($0.id)", time: $0.timestamp) } +
+                       clipThumb.map { (key: "clip_\($0.id)", time: $0.inPoint) }
+
         // ── Phase 1: thumbnails only (fast) ───────────────────────────────
         let asset = AVURLAsset(url: videoURL)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 640, height: 640)
 
-        for still in stills {
-            let t = CMTime(seconds: still.timestamp, preferredTimescale: 600)
-            if let cg = try? await generator.image(at: t).image {
+        let times = allItems.map { CMTime(seconds: $0.time, preferredTimescale: 600) }
+        var index = 0
+
+        for await result in generator.images(for: times) {
+            if case let .success(_, cg, _) = result {
                 let img = NSImage(cgImage: cg, size: .zero)
-                await MainActor.run { thumbnails["still_\(still.id)"] = img }
+                let key = allItems[index].key
+                await MainActor.run { thumbnails[key] = img }
             }
             done += 1
             await MainActor.run { loadingProgress = done / total }
-        }
-        for clip in clipThumb {
-            let t = CMTime(seconds: clip.inPoint, preferredTimescale: 600)
-            if let cg = try? await generator.image(at: t).image {
-                let img = NSImage(cgImage: cg, size: .zero)
-                await MainActor.run { thumbnails["clip_\(clip.id)"] = img }
-            }
-            done += 1
-            await MainActor.run { loadingProgress = done / total }
+            index += 1
         }
 
         // Show the grid immediately — GIFs will appear as they finish
@@ -640,10 +638,17 @@ struct MarkerPreviewView: View {
             ]
 
             var ok = true
-            for f in 0..<frames {
-                let t = CMTime(seconds: clip.inPoint + Double(f) * interval, preferredTimescale: 600)
-                guard let (cg, _) = try? await gen.image(at: t) else { ok = false; break }
-                CGImageDestinationAddImage(dest, cg, frameProp as CFDictionary)
+            let frameTimes = (0..<frames).map { f in
+                CMTime(seconds: clip.inPoint + Double(f) * interval, preferredTimescale: 600)
+            }
+
+            for await result in gen.images(for: frameTimes) {
+                switch result {
+                case .success(_, let cg, _):
+                    CGImageDestinationAddImage(dest, cg, frameProp as CFDictionary)
+                case .failure:
+                    ok = false
+                }
             }
 
             if ok && CGImageDestinationFinalize(dest) {

@@ -553,13 +553,14 @@ class VideoSnippetProcessor {
         // Map quality 0.3…1.0 → posterize levels 8…256  (fewer levels = fewer unique colors)
         let posterizeLevels = max(8, Int(round(quality * 256.0)))
         let shouldPosterize = posterizeLevels < 200 // Skip when near full quality
-
-        for frameIndex in 0..<frameCount {
+        let frameTimes = (0..<frameCount).map { frameIndex in
             let frameTime = startTime + (Double(frameIndex) * frameInterval)
-            let time = CMTime(seconds: frameTime, preferredTimescale: 600)
+            return CMTime(seconds: frameTime, preferredTimescale: 600)
+        }
 
-            do {
-                let (cgImage, _) = try await imageGenerator.image(at: time)
+        for await result in imageGenerator.images(for: frameTimes) {
+            switch result {
+            case .success(_, let cgImage, _):
                 let cropped = aspectRatio.map { ProcessingUtilities.cropImageToAspectRatio(cgImage, targetRatio: $0.ratio, horizontalOffset: horizontalOffset) } ?? cgImage
                 var outputImage = ProcessingUtilities.resizeImage(cropped, maxWidth: maxWidth)
                 // Apply LUT color correction if active
@@ -581,8 +582,8 @@ class VideoSnippetProcessor {
                     }
                 }
                 CGImageDestinationAddImage(destination, outputImage, frameProperties as CFDictionary)
-            } catch {
-                throw SnippetError.exportFailed("Cannot extract frame at \(frameTime)s")
+            case .failure(let time, _):
+                print("Failed to generate GIF frame at \(CMTimeGetSeconds(time))")
             }
         }
 
