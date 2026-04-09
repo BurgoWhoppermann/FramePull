@@ -75,6 +75,7 @@ struct ManualMarkingView: View {
     @State private var onboardingHighlights: [OnboardingHighlightID: CGRect] = [:]
     @State private var showAutoDetectPrompt = false
     @State private var previewingItemId: UUID? = nil
+    @State private var previewDismissTask: Task<Void, Never>? = nil
 
     private let sceneDetector = SceneDetector()
     private let videoProcessor = VideoProcessor()
@@ -1299,7 +1300,10 @@ struct ManualMarkingView: View {
                         Button(action: {
                             playerController.seek(to: still.timestamp)
                             withAnimation(.easeOut(duration: 0.15)) { previewingItemId = still.id }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            previewDismissTask?.cancel()
+                            previewDismissTask = Task {
+                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                guard !Task.isCancelled else { return }
                                 withAnimation(.easeOut(duration: 0.3)) {
                                     if previewingItemId == still.id { previewingItemId = nil }
                                 }
@@ -1383,7 +1387,10 @@ struct ManualMarkingView: View {
                         Button(action: {
                             playerController.seek(to: clip.inPoint)
                             withAnimation(.easeOut(duration: 0.15)) { previewingItemId = clip.id }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            previewDismissTask?.cancel()
+                            previewDismissTask = Task {
+                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                guard !Task.isCancelled else { return }
                                 withAnimation(.easeOut(duration: 0.3)) {
                                     if previewingItemId == clip.id { previewingItemId = nil }
                                 }
