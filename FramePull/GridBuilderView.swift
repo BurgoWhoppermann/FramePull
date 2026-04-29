@@ -295,7 +295,8 @@ struct GridBuilderView: View {
             sourceCardContent(source: source, id: id, isInGrid: isInGrid, isFull: isFull)
         }
         .buttonStyle(.plain)
-        .disabled(isFull)
+        // NOTE: don't .disable when isFull — that blocks .onDrag too. Drag is the way to swap
+        // a populated cell for a different source, which we want to keep working at all times.
         .onDrag {
             NSItemProvider(object: GridDropPayload.source(source).encoded as NSString)
         }
@@ -308,6 +309,7 @@ struct GridBuilderView: View {
             Group {
                 if let gifURL = clipGIFURL(for: source) {
                     AnimatedGIFView(url: gifURL)
+                        .allowsHitTesting(false)  // let parent Button capture click + .onDrag
                 } else if let img = thumbnails[id] {
                     Image(nsImage: img)
                         .resizable()
