@@ -28,7 +28,7 @@ struct ManualMarkingView: View {
     @State private var errorMessage = ""
     @State private var isDetectingScenes = false
     @State private var currentDetectionId: UUID?
-    @State private var showExportSheet = false
+    @State private var showProcessSheet = false
     @State private var showAnalysisDialog = false
     @State private var lastPressedKey: String? = nil
     @State private var videoPlayerHeight: CGFloat = 300
@@ -112,15 +112,15 @@ struct ManualMarkingView: View {
                     .font(.system(size: 9))
                     .foregroundColor(.secondary.opacity(0.6))
 
-                Button("Export Settings...") {
-                    showExportSheet = true
+                Button("Process...") {
+                    showProcessSheet = true
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.framePullBlue)
                 .controlSize(.regular)
                 .frame(maxWidth: .infinity)
                 .disabled(!markingState.hasMarkedItems)
-                .help("Configure and export marked stills and clips")
+                .help("Review, build grids, and export your marked items")
                 .onboardingHighlight(.exportSettings)
 
                 Button(action: { showShortcuts = true }) {
@@ -188,7 +188,7 @@ struct ManualMarkingView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .triggerExport)) { _ in
             guard markingState.hasMarkedItems else { return }
-            showExportSheet = true
+            showProcessSheet = true
         }
         .onAppear {
             // Show onboarding on first video load
@@ -215,7 +215,7 @@ struct ManualMarkingView: View {
             let app = appState
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
                 // Don't intercept keys when a sheet, overlay, popup, or alert is open
-                if self.showExportSheet || self.showShortcuts || self.showOnboarding || self.showAutoDetectPrompt ||
+                if self.showProcessSheet || self.showShortcuts || self.showOnboarding || self.showAutoDetectPrompt ||
                    self.showExportComplete || self.showError || self.showFaceDetectionAlert || self.showCutDetectionHint {
                     return event
                 }
@@ -397,11 +397,9 @@ struct ManualMarkingView: View {
         } message: {
             Text("All marked items have been exported successfully.")
         }
-        .sheet(isPresented: $showExportSheet) {
-            ExportSettingsView(
+        .sheet(isPresented: $showProcessSheet) {
+            ProcessSheet(
                 videoURL: videoURL,
-                stillCount: markingState.markedStills.count,
-                clipCount: markingState.markedClips.count,
                 onExportComplete: {
                     showExportComplete = true
                 },

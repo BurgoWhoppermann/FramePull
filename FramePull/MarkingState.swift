@@ -9,12 +9,16 @@ struct MarkedStill: Identifiable, Equatable {
     var isManual: Bool
     /// Horizontal crop offset for 9:16 reframe (0.0 = far left, 0.5 = center, 1.0 = far right)
     var reframeOffset: CGFloat = 0.5
+    /// Whether the user has kept this item for downstream processing (Review & Select).
+    /// Defaults true so users who skip Review export everything as before.
+    var isApproved: Bool = true
 
-    init(timestamp: Double, id: UUID = UUID(), isManual: Bool = false, reframeOffset: CGFloat = 0.5) {
+    init(timestamp: Double, id: UUID = UUID(), isManual: Bool = false, reframeOffset: CGFloat = 0.5, isApproved: Bool = true) {
         self.id = id
         self.timestamp = timestamp
         self.isManual = isManual
         self.reframeOffset = reframeOffset
+        self.isApproved = isApproved
     }
 
     var formattedTime: String {
@@ -31,13 +35,17 @@ struct MarkedClip: Identifiable, Equatable {
     var isManual: Bool
     /// Horizontal crop offset for 9:16 reframe (0.0 = far left, 0.5 = center, 1.0 = far right)
     var reframeOffset: CGFloat = 0.5
+    /// Whether the user has kept this item for downstream processing (Review & Select).
+    /// Defaults true so users who skip Review export everything as before.
+    var isApproved: Bool = true
 
-    init(inPoint: Double, outPoint: Double, id: UUID = UUID(), isManual: Bool = false, reframeOffset: CGFloat = 0.5) {
+    init(inPoint: Double, outPoint: Double, id: UUID = UUID(), isManual: Bool = false, reframeOffset: CGFloat = 0.5, isApproved: Bool = true) {
         self.id = id
         self.inPoint = inPoint
         self.outPoint = outPoint
         self.isManual = isManual
         self.reframeOffset = reframeOffset
+        self.isApproved = isApproved
     }
 
     var duration: Double {
@@ -73,6 +81,9 @@ class MarkingState: ObservableObject {
 
     /// Marked clip ranges
     @Published var markedClips: [MarkedClip] = []
+
+    /// User-built grids (Create Grids phase). Empty by default.
+    @Published var grids: [GridConfig] = []
 
     /// Pending IN point (waiting for OUT)
     @Published var pendingInPoint: Double?
@@ -128,6 +139,11 @@ class MarkingState: ObservableObject {
         case removedClip(MarkedClip)
         case modifiedClipRange(id: UUID, oldIn: Double, oldOut: Double, wasManual: Bool)
         case clearedAll(stills: [MarkedStill], clips: [MarkedClip])
+        case toggledStillApproval(id: UUID, oldValue: Bool)
+        case toggledClipApproval(id: UUID, oldValue: Bool)
+        case addedGrid(GridConfig)
+        case removedGrid(GridConfig, atIndex: Int)
+        case modifiedGrid(id: UUID, previous: GridConfig)
     }
 
     /// Callback invoked when an undo action is recorded, so the parent (AppState) can mirror it
@@ -190,6 +206,28 @@ class MarkingState: ObservableObject {
         case .clearedAll(let stills, let clips):
             markedStills = stills
             markedClips = clips
+
+        case .toggledStillApproval(let id, let oldValue):
+            if let index = markedStills.firstIndex(where: { $0.id == id }) {
+                markedStills[index].isApproved = oldValue
+            }
+
+        case .toggledClipApproval(let id, let oldValue):
+            if let index = markedClips.firstIndex(where: { $0.id == id }) {
+                markedClips[index].isApproved = oldValue
+            }
+
+        case .addedGrid(let grid):
+            grids.removeAll { $0.id == grid.id }
+
+        case .removedGrid(let grid, let index):
+            let insertAt = min(max(0, index), grids.count)
+            grids.insert(grid, at: insertAt)
+
+        case .modifiedGrid(let id, let previous):
+            if let index = grids.firstIndex(where: { $0.id == id }) {
+                grids[index] = previous
+            }
         }
     }
 
@@ -355,5 +393,99 @@ class MarkingState: ObservableObject {
         if let index = markedClips.firstIndex(where: { $0.id == id }) {
             markedClips[index].reframeOffset = offset
         }
+    }
+
+    // MARK: - Approval (Review & Select)
+
+    /// Stills the user has kept for downstream processing
+    var approvedStills: [MarkedStill] { markedStills.filter { $0.isApproved } }
+
+    /// Clips the user has kept for downstream processing
+    var approvedClips: [MarkedClip] { markedClips.filter { $0.isApproved } }
+
+    /// Toggle approval for a still — records undo
+    func setApproval(forStill id: UUID, approved: Bool) {
+        guard let index = markedStills.firstIndex(where: { $0.id == id }) else { return }
+        let oldValue = markedStills[index].isApproved
+        guard oldValue != approved else { return }
+        markedStills[index].isApproved = approved
+        recordUndo(.toggledStillApproval(id: id, oldValue: oldValue))
+    }
+
+    /// Toggle approval for a clip — records undo
+    func setApproval(forClip id: UUID, approved: Bool) {
+        guard let index = markedClips.firstIndex(where: { $0.id == id }) else { return }
+        let oldValue = markedClips[index].isApproved
+        guard oldValue != approved else { return }
+        markedClips[index].isApproved = approved
+        recordUndo(.toggledClipApproval(id: id, oldValue: oldValue))
+    }
+
+    /// Approve all marked items (no undo — used as a bulk reset)
+    func approveAll() {
+        for i in markedStills.indices { markedStills[i].isApproved = true }
+        for i in markedClips.indices { markedClips[i].isApproved = true }
+    }
+
+    // MARK: - Grids
+
+    /// Grids ready to render (every slot filled).
+    var completedGrids: [GridConfig] { grids.filter { $0.isComplete } }
+
+    /// Append a new grid and return its id.
+    @discardableResult
+    func addGrid(layout: GridLayout = .oneByThree, ratio: OutputRatio = .nineSixteen) -> UUID {
+        let grid = GridConfig(layout: layout, ratio: ratio)
+        grids.append(grid)
+        recordUndo(.addedGrid(grid))
+        return grid.id
+    }
+
+    /// Remove a grid by id.
+    func removeGrid(id: UUID) {
+        guard let index = grids.firstIndex(where: { $0.id == id }) else { return }
+        let removed = grids[index]
+        grids.remove(at: index)
+        recordUndo(.removedGrid(removed, atIndex: index))
+    }
+
+    /// Replace a grid wholesale, recording its previous state for undo.
+    func updateGrid(_ updated: GridConfig) {
+        guard let index = grids.firstIndex(where: { $0.id == updated.id }) else { return }
+        let previous = grids[index]
+        guard previous != updated else { return }
+        grids[index] = updated
+        recordUndo(.modifiedGrid(id: updated.id, previous: previous))
+    }
+
+    /// Auto-fill a grid from the approved item pool, distributing evenly across the timeline.
+    /// Skips items already in the grid. Mutates the grid in-place via `updateGrid`.
+    func autoFill(gridID: UUID) {
+        guard let index = grids.firstIndex(where: { $0.id == gridID }) else { return }
+        var grid = grids[index]
+        let emptySlots = grid.layout.slots - grid.selectedCells.count
+        guard emptySlots > 0 else { return }
+
+        let usedSources = Set(grid.selectedCells)
+        // Pool: approved stills + approved clips, sorted by timestamp / midpoint
+        struct Candidate { let source: GridCellSource; let time: Double }
+        var pool: [Candidate] = []
+        for still in approvedStills where !usedSources.contains(.still(still.id)) {
+            pool.append(Candidate(source: .still(still.id), time: still.timestamp))
+        }
+        for clip in approvedClips where !usedSources.contains(.clip(clip.id)) {
+            pool.append(Candidate(source: .clip(clip.id), time: clip.inPoint + clip.duration / 2))
+        }
+        pool.sort { $0.time < $1.time }
+        guard !pool.isEmpty else { return }
+
+        let pickCount = min(emptySlots, pool.count)
+        var picked: [GridCellSource] = []
+        for i in 0..<pickCount {
+            let idx = i * pool.count / pickCount
+            picked.append(pool[idx].source)
+        }
+        grid.selectedCells.append(contentsOf: picked)
+        updateGrid(grid)
     }
 }

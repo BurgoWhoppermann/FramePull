@@ -294,6 +294,7 @@ class AppState: ObservableObject {
     // Independent export type toggles
     @Published var exportStillsEnabled: Bool = false
     @Published var exportMovingClipsEnabled: Bool = true
+    @Published var exportGridsEnabled: Bool = true
 
     // Format toggles for Clips (user can select any combination)
     @Published var exportGIF: Bool = false
@@ -524,6 +525,23 @@ class AppState: ObservableObject {
         case .clearedAll(let stills, let clips):
             markingState.markedStills = stills
             markingState.markedClips = clips
+        case .toggledStillApproval(let id, let oldValue):
+            if let index = markingState.markedStills.firstIndex(where: { $0.id == id }) {
+                markingState.markedStills[index].isApproved = oldValue
+            }
+        case .toggledClipApproval(let id, let oldValue):
+            if let index = markingState.markedClips.firstIndex(where: { $0.id == id }) {
+                markingState.markedClips[index].isApproved = oldValue
+            }
+        case .addedGrid(let grid):
+            markingState.grids.removeAll { $0.id == grid.id }
+        case .removedGrid(let grid, let index):
+            let insertAt = min(max(0, index), markingState.grids.count)
+            markingState.grids.insert(grid, at: insertAt)
+        case .modifiedGrid(let id, let previous):
+            if let index = markingState.grids.firstIndex(where: { $0.id == id }) {
+                markingState.grids[index] = previous
+            }
         }
     }
 
@@ -558,6 +576,7 @@ class AppState: ObservableObject {
     var hasSelectedExportType: Bool {
         if exportStillsEnabled { return true }
         if exportMovingClipsEnabled && (exportGIF || exportMP4) { return true }
+        if exportGridsEnabled && !markingState.completedGrids.isEmpty { return true }
         return false
     }
 

@@ -17,6 +17,9 @@ struct MarkerPreviewView: View {
     var selectMode: Bool = false
     /// Called when user confirms selection in selectMode — passes (selectedStillIDs, selectedClipIDs)
     var onSelectionConfirm: ((Set<UUID>, Set<UUID>) -> Void)? = nil
+    /// When true, checkbox toggles read/write directly to `markingState.isApproved`
+    /// instead of a local set, and the Confirm Selection footer is hidden (host owns advance).
+    var useApprovalState: Bool = false
 
     private var markedStills: [MarkedStill] { showStills ? markingState.markedStills : [] }
     private var markedClips: [MarkedClip] { showClips ? markingState.markedClips : [] }
@@ -57,11 +60,65 @@ struct MarkerPreviewView: View {
         markedClips.map { ("clip_\($0.id)", "\($0.formattedInPoint) – \($0.formattedOutPoint)") }
     }
 
-    private var selectedStillCount: Int { selectedStillIDs.count }
-    private var selectedClipCount: Int { selectedClipIDs.count }
+    private var selectedStillCount: Int {
+        useApprovalState ? markedStills.filter(\.isApproved).count : selectedStillIDs.count
+    }
+    private var selectedClipCount: Int {
+        useApprovalState ? markedClips.filter(\.isApproved).count : selectedClipIDs.count
+    }
     private var totalSelectedCount: Int { selectedStillCount + selectedClipCount }
     private var allSelected: Bool {
-        selectedStillIDs.count == markedStills.count && selectedClipIDs.count == markedClips.count
+        if useApprovalState {
+            return markedStills.allSatisfy(\.isApproved) && markedClips.allSatisfy(\.isApproved)
+        }
+        return selectedStillIDs.count == markedStills.count && selectedClipIDs.count == markedClips.count
+    }
+
+    private func isStillSelected(_ id: UUID) -> Bool {
+        if useApprovalState {
+            return markedStills.first(where: { $0.id == id })?.isApproved ?? false
+        }
+        return selectedStillIDs.contains(id)
+    }
+
+    private func isClipSelected(_ id: UUID) -> Bool {
+        if useApprovalState {
+            return markedClips.first(where: { $0.id == id })?.isApproved ?? false
+        }
+        return selectedClipIDs.contains(id)
+    }
+
+    private func toggleStill(_ id: UUID) {
+        if useApprovalState {
+            let current = markedStills.first(where: { $0.id == id })?.isApproved ?? true
+            markingState.setApproval(forStill: id, approved: !current)
+        } else {
+            if selectedStillIDs.contains(id) { selectedStillIDs.remove(id) }
+            else { selectedStillIDs.insert(id) }
+        }
+    }
+
+    private func toggleClip(_ id: UUID) {
+        if useApprovalState {
+            let current = markedClips.first(where: { $0.id == id })?.isApproved ?? true
+            markingState.setApproval(forClip: id, approved: !current)
+        } else {
+            if selectedClipIDs.contains(id) { selectedClipIDs.remove(id) }
+            else { selectedClipIDs.insert(id) }
+        }
+    }
+
+    private func setAllSelected(_ selected: Bool) {
+        if useApprovalState {
+            for still in markedStills { markingState.setApproval(forStill: still.id, approved: selected) }
+            for clip in markedClips { markingState.setApproval(forClip: clip.id, approved: selected) }
+        } else if selected {
+            selectedStillIDs = Set(markedStills.map(\.id))
+            selectedClipIDs = Set(markedClips.map(\.id))
+        } else {
+            selectedStillIDs.removeAll()
+            selectedClipIDs.removeAll()
+        }
     }
 
     var body: some View {
@@ -73,23 +130,19 @@ struct MarkerPreviewView: View {
                     Spacer()
                     if selectMode {
                         Button(allSelected ? "Deselect All" : "Select All") {
-                            if allSelected {
-                                selectedStillIDs.removeAll()
-                                selectedClipIDs.removeAll()
-                            } else {
-                                selectedStillIDs = Set(markedStills.map(\.id))
-                                selectedClipIDs = Set(markedClips.map(\.id))
-                            }
+                            setAllSelected(!allSelected)
                         }
                         .buttonStyle(.plain)
                         .foregroundColor(.framePullBlue)
                         .font(.callout)
                     }
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                    if !useApprovalState {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Close")
                     }
-                    .buttonStyle(.plain)
-                    .help("Close")
                 }
 
                 if isLoadingPreviews {
@@ -116,7 +169,7 @@ struct MarkerPreviewView: View {
                                     .foregroundColor(.orange)
                                 LazyVGrid(columns: columns, spacing: 10) {
                                     ForEach(Array(markedStills.enumerated()), id: \.element.id) { i, still in
-                                        let isSelected = selectedStillIDs.contains(still.id)
+                                        let isSelected = isStillSelected(still.id)
                                         let isHovered = hoveredItemIndex == i
                                         ZStack(alignment: .topLeading) {
                                             VStack(spacing: 4) {
@@ -157,8 +210,7 @@ struct MarkerPreviewView: View {
                                         .onHover { hovering in hoveredItemIndex = hovering ? i : (hoveredItemIndex == i ? nil : hoveredItemIndex) }
                                         .onTapGesture {
                                             if selectMode {
-                                                if isSelected { selectedStillIDs.remove(still.id) }
-                                                else { selectedStillIDs.insert(still.id) }
+                                                toggleStill(still.id)
                                             } else {
                                                 lightboxIndex = i
                                             }
@@ -175,7 +227,7 @@ struct MarkerPreviewView: View {
                                 LazyVGrid(columns: columns, spacing: 10) {
                                     ForEach(Array(markedClips.enumerated()), id: \.element.id) { j, clip in
                                         let clipKey = "clip_\(clip.id)"
-                                        let isSelected = selectedClipIDs.contains(clip.id)
+                                        let isSelected = isClipSelected(clip.id)
                                         let clipItemIndex = markedStills.count + j
                                         let isHovered = hoveredItemIndex == clipItemIndex
                                         ZStack(alignment: .topLeading) {
@@ -250,8 +302,7 @@ struct MarkerPreviewView: View {
                                         .onHover { hovering in hoveredItemIndex = hovering ? clipItemIndex : (hoveredItemIndex == clipItemIndex ? nil : hoveredItemIndex) }
                                         .onTapGesture {
                                             if selectMode {
-                                                if isSelected { selectedClipIDs.remove(clip.id) }
-                                                else { selectedClipIDs.insert(clip.id) }
+                                                toggleClip(clip.id)
                                             } else {
                                                 lightboxIndex = clipItemIndex
                                             }
@@ -265,7 +316,7 @@ struct MarkerPreviewView: View {
                     }
 
                     // ── Select mode footer ─────────────────────────────────
-                    if selectMode {
+                    if selectMode && !useApprovalState {
                         Divider()
                         HStack {
                             Text("\(totalSelectedCount) item\(totalSelectedCount == 1 ? "" : "s") selected")
@@ -283,14 +334,23 @@ struct MarkerPreviewView: View {
                             .disabled(totalSelectedCount == 0)
                         }
                         .padding(.top, 4)
+                    } else if selectMode && useApprovalState {
+                        Divider()
+                        HStack {
+                            Text("\(totalSelectedCount) of \(markedStills.count + markedClips.count) item\(totalSelectedCount == 1 ? "" : "s") kept")
+                                .font(.callout)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.top, 4)
                     }
                 }
             }
             .padding()
-            .frame(width: 680, height: selectMode ? 620 : 560)
+            .modifier(MarkerPreviewSizing(useApprovalState: useApprovalState, selectMode: selectMode))
             .task { await generateAllPreviews() }
             .onAppear {
-                if selectMode {
+                if selectMode && !useApprovalState {
                     // Initialize all items as selected
                     selectedStillIDs = Set(markedStills.map(\.id))
                     selectedClipIDs = Set(markedClips.map(\.id))
@@ -411,13 +471,9 @@ struct MarkerPreviewView: View {
                             if selectMode {
                                 let isClipItem = idx >= markedStills.count
                                 let itemID = isClipItem ? markedClips[idx - markedStills.count].id : markedStills[idx].id
-                                let isSelected = isClipItem ? selectedClipIDs.contains(itemID) : selectedStillIDs.contains(itemID)
+                                let isSelected = isClipItem ? isClipSelected(itemID) : isStillSelected(itemID)
                                 Button {
-                                    if isClipItem {
-                                        if isSelected { selectedClipIDs.remove(itemID) } else { selectedClipIDs.insert(itemID) }
-                                    } else {
-                                        if isSelected { selectedStillIDs.remove(itemID) } else { selectedStillIDs.insert(itemID) }
-                                    }
+                                    if isClipItem { toggleClip(itemID) } else { toggleStill(itemID) }
                                 } label: {
                                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                                         .font(.title2)
@@ -434,11 +490,7 @@ struct MarkerPreviewView: View {
                             if selectMode {
                                 let isClipItem = idx >= markedStills.count
                                 let itemID = isClipItem ? markedClips[idx - markedStills.count].id : markedStills[idx].id
-                                if isClipItem {
-                                    if selectedClipIDs.contains(itemID) { selectedClipIDs.remove(itemID) } else { selectedClipIDs.insert(itemID) }
-                                } else {
-                                    if selectedStillIDs.contains(itemID) { selectedStillIDs.remove(itemID) } else { selectedStillIDs.insert(itemID) }
-                                }
+                                if isClipItem { toggleClip(itemID) } else { toggleStill(itemID) }
                             }
                         }
                         .onHover { hovering in
@@ -663,6 +715,20 @@ struct MarkerPreviewView: View {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("FramePullPreviews", isDirectory: true)
         try? FileManager.default.removeItem(at: tempDir)
+    }
+}
+
+// MARK: - Sizing modifier
+
+private struct MarkerPreviewSizing: ViewModifier {
+    let useApprovalState: Bool
+    let selectMode: Bool
+    func body(content: Content) -> some View {
+        if useApprovalState {
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            content.frame(width: 680, height: selectMode ? 620 : 560)
+        }
     }
 }
 
