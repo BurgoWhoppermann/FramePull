@@ -1067,7 +1067,7 @@ struct ManualMarkingView: View {
                 }
 
                 Toggle(isOn: $appState.snapToSceneCuts) {
-                    Label("Snap", systemImage: "magnet")
+                    Label("Snap", systemImage: "arrow.merge")
                         .font(.caption)
                 }
                 .toggleStyle(.checkbox)

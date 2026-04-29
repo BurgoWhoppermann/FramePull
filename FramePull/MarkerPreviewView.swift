@@ -662,6 +662,10 @@ struct MarkerPreviewView: View {
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
         for clip in markedClips.prefix(20) {
+            // If the view disappeared mid-generation, bail out before issuing more disk writes —
+            // otherwise CGImageDestination races with cleanupTempGIFs() removing the directory.
+            if Task.isCancelled { break }
+
             let clipKey  = "clip_\(clip.id)"
             let gifURL   = tempDir.appendingPathComponent("\(clip.id).gif")
             let maxDur   = clip.duration

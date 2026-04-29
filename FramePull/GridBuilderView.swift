@@ -511,6 +511,9 @@ struct GridBuilderView: View {
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
         for clip in clips.prefix(20) where clipGIFURLs[clip.id] == nil {
+            // Bail if the composer disappeared mid-generation — otherwise CGImageDestination
+            // races with cleanupClipGIFs() removing the directory.
+            if Task.isCancelled { break }
             let gifURL = tempDir.appendingPathComponent("\(clip.id).gif")
             let maxDur = min(clip.duration, 5.0)
             let fps = 10
