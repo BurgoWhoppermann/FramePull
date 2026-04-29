@@ -432,15 +432,24 @@ struct ExportSettingsView: View {
                 }
 
                 Button(action: { startExport() }) {
-                    Text("Export")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
+                    HStack(spacing: 6) {
+                        if appState.saveURL == nil {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        Text(appState.saveURL == nil ? "Choose Folder & Export" : "Export")
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.framePullBlue)
                 .controlSize(.large)
-                .disabled(appState.saveURL == nil || isExporting || !appState.hasSelectedExportType || (displayStillCount + displayClipCount + displayGridCount) == 0)
-                .help("Export all marked stills and clips to the selected folder")
+                // Note: don't disable on saveURL==nil — clicking will open the folder picker.
+                .disabled(isExporting || !appState.hasSelectedExportType || (displayStillCount + displayClipCount + displayGridCount) == 0)
+                .help(appState.saveURL == nil
+                      ? "Pick an output folder, then export all marked items"
+                      : "Export all marked stills and clips to the selected folder")
             }
 
             Text("Files are always added — never overwritten")
@@ -522,13 +531,29 @@ struct ExportSettingsView: View {
     }
 
     private func startExport() {
-        guard let outputDir = appState.saveURL else { return }
+        // If no output folder is set, prompt the user instead of silently no-op'ing.
+        // This handles the case where the Export button got tapped before a folder was chosen.
+        guard let outputDir = appState.saveURL else {
+            chooseLocation()
+            // If they picked a folder via the prompt, kick the export off automatically.
+            if appState.saveURL != nil {
+                startExport()
+            }
+            return
+        }
 
         isExporting = true
         exportProgress = 0
         exportStatusMessage = "Starting export..."
 
         Task {
+            // Activate security-scoped access for the chosen folder. Required when the URL
+            // came from a persisted bookmark, and important for iCloud Drive paths where
+            // even a fresh NSOpenPanel grant doesn't always cover ImageIO's atomic-write
+            // staging files (they fail with "Operation not permitted" otherwise).
+            let didStart = outputDir.startAccessingSecurityScopedResource()
+            defer { if didStart { outputDir.stopAccessingSecurityScopedResource() } }
+
             do {
                 try await exportManual(to: outputDir)
 
