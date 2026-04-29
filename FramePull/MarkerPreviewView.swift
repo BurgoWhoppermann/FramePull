@@ -742,7 +742,7 @@ struct AnimatedGIFView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSImageView {
-        let imageView = NSImageView()
+        let imageView = PassthroughImageView()
         imageView.animates = true
         imageView.imageScaling = allowScaleUp ? .scaleProportionallyUpOrDown : .scaleProportionallyDown
         imageView.imageAlignment = .alignCenter
@@ -769,4 +769,11 @@ struct AnimatedGIFView: NSViewRepresentable {
     }
 
     class Coordinator { var currentURL: URL? }
+}
+
+/// NSImageView that's invisible to AppKit hit-testing. Required so SwiftUI parents (Button
+/// click, .onTapGesture, .onDrag) actually receive mouse events when this view is layered
+/// inside them — by default NSImageView swallows mousedown.
+private final class PassthroughImageView: NSImageView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

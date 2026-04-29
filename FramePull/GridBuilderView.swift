@@ -308,8 +308,8 @@ struct GridBuilderView: View {
         ZStack(alignment: .topTrailing) {
             Group {
                 if let gifURL = clipGIFURL(for: source) {
+                    // PassthroughImageView ensures clicks/drags reach the parent Button.
                     AnimatedGIFView(url: gifURL)
-                        .allowsHitTesting(false)  // let parent Button capture click + .onDrag
                 } else if let img = thumbnails[id] {
                     Image(nsImage: img)
                         .resizable()
