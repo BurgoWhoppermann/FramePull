@@ -9,6 +9,10 @@ struct ExportSettingsView: View {
     let clipCount: Int
     var onExportComplete: () -> Void
     var onExportError: (String) -> Void
+    /// When true, the view is hosted by `ProcessSheet`. The header close button and the
+    /// "Preview & Select" action are hidden; selection is sourced from `markingState.approvedStills/Clips`
+    /// instead of a local Set.
+    var embedded: Bool = false
 
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -18,41 +22,107 @@ struct ExportSettingsView: View {
     @State private var exportStatusMessage = ""
     @State private var showPreviewSelect = false
 
-    /// When set via "Preview & Select", only these items are exported
+    /// When set via "Preview & Select" in legacy (non-embedded) mode, only these items are exported.
+    /// In embedded mode, selection is read directly from `appState.markingState`.
     @State private var selectedStillIDs: Set<UUID>? = nil
     @State private var selectedClipIDs: Set<UUID>? = nil
 
     private let videoProcessor = VideoProcessor()
     private let snippetProcessor = VideoSnippetProcessor()
+    private let gridExporter = GridExporter()
 
     /// Display counts — filtered when a selection is active
     private var displayStillCount: Int {
-        if let ids = selectedStillIDs { return ids.count } else { return stillCount }
+        if embedded { return appState.markingState.approvedStills.count }
+        if let ids = selectedStillIDs { return ids.count }
+        return stillCount
     }
     private var displayClipCount: Int {
-        if let ids = selectedClipIDs { return ids.count } else { return clipCount }
+        if embedded { return appState.markingState.approvedClips.count }
+        if let ids = selectedClipIDs { return ids.count }
+        return clipCount
+    }
+    /// Underlying total before approval filter — used to indicate "filtered N of M"
+    private var totalStillCount: Int { embedded ? appState.markingState.markedStills.count : stillCount }
+    private var totalClipCount: Int { embedded ? appState.markingState.markedClips.count : clipCount }
+    private var hasSelectionFilter: Bool {
+        if embedded { return displayStillCount + displayClipCount < totalStillCount + totalClipCount }
+        return selectedStillIDs != nil || selectedClipIDs != nil
     }
 
+    /// Number of completed grids ready to render
+    private var displayGridCount: Int { appState.markingState.completedGrids.count }
+    /// Total grids the user has created (incomplete ones are skipped at export)
+    private var totalGridCount: Int { appState.markingState.grids.count }
+
     var body: some View {
+        if embedded {
+            VStack(spacing: 0) {
+                ScrollView {
+                    bodyContent
+                        .padding(.horizontal, 24)
+                        .padding(.top, 18)
+                        .padding(.bottom, 12)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Divider()
+
+                actionBar
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color(nsColor: .windowBackgroundColor))
+            }
+            .interactiveDismissDisabled(isExporting)
+        } else {
+            VStack(spacing: 8) {
+                bodyContent
+                actionBar
+            }
+            .padding()
+            .frame(width: 400)
+            .interactiveDismissDisabled(isExporting)
+            .sheet(isPresented: $showPreviewSelect) {
+                PreviewSelectWrapperView(
+                    videoURL: videoURL,
+                    markingState: appState.markingState,
+                    reframeRatio: appState.export9x16 ? .ratio9x16 : (appState.export4x5 ? .ratio4x5 : nil),
+                    showStills: appState.exportStillsEnabled,
+                    showClips: appState.exportMovingClipsEnabled,
+                    onConfirm: { stillIDs, clipIDs in
+                        selectedStillIDs = stillIDs
+                        selectedClipIDs = clipIDs
+                    }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Header
             HStack {
                 Spacer()
-                Image(nsImage: Self.appIcon)
-                    .resizable()
-                    .frame(width: 28, height: 28)
+                if !embedded {
+                    Image(nsImage: Self.appIcon)
+                        .resizable()
+                        .frame(width: 28, height: 28)
+                }
                 Text("Export Settings")
                     .font(.title3.weight(.semibold))
                 Spacer()
             }
             .overlay(alignment: .trailing) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+                if !embedded {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isExporting)
+                    .help("Close export settings")
                 }
-                .buttonStyle(.plain)
-                .disabled(isExporting)
-                .help("Close export settings")
             }
 
             // Summary
@@ -67,24 +137,31 @@ struct ExportSettingsView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
+                if appState.exportGridsEnabled && displayGridCount > 0 {
+                    Label("\(displayGridCount) grid\(displayGridCount == 1 ? "" : "s")", systemImage: "square.grid.2x2")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
                 Spacer()
             }
 
-            if selectedStillIDs != nil || selectedClipIDs != nil {
+            if hasSelectionFilter {
                 HStack(spacing: 4) {
                     Image(systemName: "line.3.horizontal.decrease.circle.fill")
                         .foregroundColor(.framePullAmber)
-                    Text("Filtered — exporting \(displayStillCount + displayClipCount) of \(stillCount + clipCount) items")
+                    Text("Filtered — exporting \(displayStillCount + displayClipCount) of \(totalStillCount + totalClipCount) items")
                         .font(.caption)
                         .foregroundColor(.framePullAmber)
                     Spacer()
-                    Button("Reset") {
-                        selectedStillIDs = nil
-                        selectedClipIDs = nil
+                    if !embedded {
+                        Button("Reset") {
+                            selectedStillIDs = nil
+                            selectedClipIDs = nil
+                        }
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
                     }
-                    .font(.caption)
-                    .buttonStyle(.plain)
-                    .foregroundColor(.secondary)
                 }
             }
 
@@ -262,6 +339,33 @@ struct ExportSettingsView: View {
                 }
             }
 
+            // Grids section (only when at least one grid exists)
+            if totalGridCount > 0 {
+                Divider().padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Export grids", isOn: $appState.exportGridsEnabled)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 13, weight: .semibold))
+                        .help("Render configured grids and save them to /grids/ in the output folder")
+
+                    if appState.exportGridsEnabled {
+                        let incomplete = totalGridCount - displayGridCount
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(displayGridCount) of \(totalGridCount) grid\(totalGridCount == 1 ? "" : "s") ready to render")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            if incomplete > 0 {
+                                Text("\(incomplete) grid\(incomplete == 1 ? "" : "s") incomplete — open Create Grids to fill empty cells")
+                                    .font(.caption)
+                                    .foregroundColor(.framePullAmber)
+                            }
+                        }
+                        .padding(.leading, 24)
+                    }
+                }
+            }
+
             Divider().padding(.vertical, 4)
 
             // Save location
@@ -294,7 +398,14 @@ struct ExportSettingsView: View {
                 .help("Select the folder where exported files will be saved")
             }
 
-            // Export progress
+        }
+    }
+
+    /// Pinned to the bottom of the sheet in embedded mode so the Export button is always visible
+    /// regardless of how many settings sections are showing.
+    @ViewBuilder
+    private var actionBar: some View {
+        VStack(spacing: 8) {
             if isExporting {
                 VStack(spacing: 6) {
                     ProgressView(value: exportProgress)
@@ -304,23 +415,21 @@ struct ExportSettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                .padding(.top, 8)
             }
 
-            Spacer().frame(height: 8)
-
-            // Action buttons
             HStack(spacing: 12) {
-                Button(action: { showPreviewSelect = true }) {
-                    Label("Preview & Select", systemImage: "checklist")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
+                if !embedded {
+                    Button(action: { showPreviewSelect = true }) {
+                        Label("Preview & Select", systemImage: "checklist")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.framePullAmber)
+                    .controlSize(.large)
+                    .disabled(isExporting)
+                    .help("Preview items, select which to export, and adjust crop positions")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.framePullAmber)
-                .controlSize(.large)
-                .disabled(isExporting)
-                .help("Preview items, select which to export, and adjust crop positions")
 
                 Button(action: { startExport() }) {
                     Text("Export")
@@ -330,31 +439,14 @@ struct ExportSettingsView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.framePullBlue)
                 .controlSize(.large)
-                .disabled(appState.saveURL == nil || isExporting || !appState.hasSelectedExportType)
+                .disabled(appState.saveURL == nil || isExporting || !appState.hasSelectedExportType || (displayStillCount + displayClipCount + displayGridCount) == 0)
                 .help("Export all marked stills and clips to the selected folder")
             }
-            .padding(.top, 4)
 
             Text("Files are always added — never overwritten")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, alignment: .center)
-        }
-        .padding()
-        .frame(width: 400)
-        .interactiveDismissDisabled(isExporting)
-        .sheet(isPresented: $showPreviewSelect) {
-            PreviewSelectWrapperView(
-                videoURL: videoURL,
-                markingState: appState.markingState,
-                reframeRatio: appState.export9x16 ? .ratio9x16 : (appState.export4x5 ? .ratio4x5 : nil),
-                showStills: appState.exportStillsEnabled,
-                showClips: appState.exportMovingClipsEnabled,
-                onConfirm: { stillIDs, clipIDs in
-                    selectedStillIDs = stillIDs
-                    selectedClipIDs = clipIDs
-                }
-            )
         }
     }
 
@@ -401,6 +493,7 @@ struct ExportSettingsView: View {
 
     /// Stills filtered by selection (if provided)
     private var effectiveStills: [MarkedStill] {
+        if embedded { return appState.markingState.approvedStills }
         let all = appState.markingState.markedStills
         guard let ids = selectedStillIDs else { return all }
         return all.filter { ids.contains($0.id) }
@@ -408,6 +501,7 @@ struct ExportSettingsView: View {
 
     /// Clips filtered by selection (if provided)
     private var effectiveClips: [MarkedClip] {
+        if embedded { return appState.markingState.approvedClips }
         let all = appState.markingState.markedClips
         guard let ids = selectedClipIDs else { return all }
         return all.filter { ids.contains($0.id) }
@@ -457,10 +551,14 @@ struct ExportSettingsView: View {
     private func exportManual(to outputDir: URL) async throws {
         let stills = effectiveStills
         let clips = effectiveClips
+        let exportableGrids = appState.exportGridsEnabled
+            ? appState.markingState.completedGrids
+            : []
 
         let stillsCount = (appState.exportStillsEnabled && !stills.isEmpty) ? stills.count : 0
         let clipsCount = appState.exportMovingClipsEnabled ? clips.count : 0
-        let totalItems = max(1, stillsCount + clipsCount)
+        let gridsCount = exportableGrids.count
+        let totalItems = max(1, stillsCount + clipsCount + gridsCount)
         var completedItems = 0
 
         // Export stills
@@ -526,6 +624,71 @@ struct ExportSettingsView: View {
                 }
             }
         }
+
+        // Export grids
+        if !exportableGrids.isEmpty {
+            let gridsDir = outputDir.appendingPathComponent("grids", isDirectory: true)
+            try FileManager.default.createDirectory(at: gridsDir, withIntermediateDirectories: true)
+
+            let videoBaseName = videoURL.deletingPathExtension().lastPathComponent
+            let allMarkedStills = appState.markingState.markedStills
+            let allMarkedClips = appState.markingState.markedClips
+
+            for (gridIndex, grid) in exportableGrids.enumerated() {
+                await MainActor.run {
+                    exportStatusMessage = "Exporting grid \(gridIndex + 1) of \(exportableGrids.count)..."
+                }
+
+                // Use a unified prefix so .jpg and .mp4 grids share the same numbering sequence.
+                let next = nextGridIndex(in: gridsDir, baseName: videoBaseName)
+                let indexStr = String(format: "%03d", next)
+                let isVideo = grid.containsClip
+                let ext = isVideo ? "mp4" : "jpg"
+                let outFile = gridsDir.appendingPathComponent("\(videoBaseName)_grid_\(indexStr).\(ext)")
+
+                if isVideo {
+                    try await gridExporter.exportVideoGrid(
+                        config: grid,
+                        sourceVideoURL: videoURL,
+                        markedStills: allMarkedStills,
+                        markedClips: allMarkedClips,
+                        outputURL: outFile,
+                        lutCubeDimension: appState.lutEnabled ? appState.lutCubeDimension : nil,
+                        lutCubeData: appState.lutCubeData,
+                        progressHandler: { sub in
+                            Task { @MainActor in
+                                let perGrid = 1.0 / Double(totalItems)
+                                let base = Double(completedItems) / Double(totalItems)
+                                exportProgress = base + perGrid * sub
+                            }
+                        }
+                    )
+                } else {
+                    try await gridExporter.exportImageGrid(
+                        config: grid,
+                        sourceVideoURL: videoURL,
+                        markedStills: allMarkedStills,
+                        markedClips: allMarkedClips,
+                        outputURL: outFile,
+                        lutCubeDimension: appState.lutEnabled ? appState.lutCubeDimension : nil,
+                        lutCubeData: appState.lutCubeData
+                    )
+                }
+
+                completedItems += 1
+                await MainActor.run {
+                    exportProgress = Double(completedItems) / Double(totalItems)
+                }
+            }
+        }
+    }
+
+    /// Find the next available index across both .jpg and .mp4 grid files in a directory,
+    /// so mixed image/video grids share one numbering sequence.
+    private func nextGridIndex(in directory: URL, baseName: String) -> Int {
+        let jpg = ProcessingUtilities.findNextAvailableIndex(in: directory, prefix: "\(baseName)_grid", suffix: ".jpg")
+        let mp4 = ProcessingUtilities.findNextAvailableIndex(in: directory, prefix: "\(baseName)_grid", suffix: ".mp4")
+        return max(jpg, mp4)
     }
 
 }
