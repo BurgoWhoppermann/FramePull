@@ -56,10 +56,10 @@ struct ProcessSheet: View {
                     .padding(.vertical, 10)
             }
         }
-        // Adaptive sizing — adapts to small windows (e.g. MacBook Air) without clipping the
-        // composer. Defaults to a generous size when there's room.
-        .frame(minWidth: 720, idealWidth: 760, maxWidth: 1100,
-               minHeight: 540, idealHeight: 680, maxHeight: 900)
+        // Lift the maxWidth / maxHeight ceilings so the sheet expands with the window —
+        // including macOS green-button fullscreen. minWidth/minHeight keep small windows usable.
+        .frame(minWidth: 760, idealWidth: 1100, maxWidth: .infinity,
+               minHeight: 600, idealHeight: 800, maxHeight: .infinity)
     }
 
     // MARK: - Content

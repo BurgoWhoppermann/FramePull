@@ -194,7 +194,7 @@ struct FramePullApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
-                .frame(minWidth: 600, minHeight: 600)
+                .frame(minWidth: 800, minHeight: 600)
                 .onOpenURL { url in
                     appState.videoURL = url
                 }
@@ -212,7 +212,7 @@ struct FramePullApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
-        .defaultSize(width: 900, height: 800)
+        .defaultSize(width: 1280, height: 900)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Show FramePull Window") {
