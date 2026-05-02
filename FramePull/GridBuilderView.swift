@@ -35,13 +35,15 @@ struct GridBuilderView: View {
             if grids.isEmpty {
                 emptyState
             } else if let grid = activeGrid {
-                HStack(spacing: 0) {
+                // HSplitView is the AppKit-backed splitter — drag handle, native feel,
+                // and `autosaveName` persists the divider position across launches.
+                HSplitView {
                     sourcePane(grid: grid)
-                        .frame(width: 220)
-                    Divider()
+                        .frame(minWidth: 220, idealWidth: 280, maxWidth: 480)
                     previewPane(grid: grid)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .background(SplitViewAutosave(name: "GridBuilderSplit"))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -277,7 +279,7 @@ struct GridBuilderView: View {
             .padding(.top, 10)
 
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 86, maximum: 100), spacing: 6)], spacing: 6) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 110, maximum: 160), spacing: 8)], spacing: 8) {
                     ForEach(approvedSources, id: \.self) { source in
                         sourceCard(source: source, grid: grid)
                     }
@@ -330,7 +332,7 @@ struct GridBuilderView: View {
                     RoundedRectangle(cornerRadius: 4).fill(Color.gray.opacity(0.18))
                 }
             }
-            .frame(height: 56)
+            .frame(height: 80)
             .frame(maxWidth: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .overlay(
@@ -562,6 +564,32 @@ struct GridBuilderView: View {
         if case .clip(let id) = source { return clipGIFURLs[id] }
         return nil
     }
+}
+
+// MARK: - Split view autosave
+
+/// Persists the `HSplitView` divider position across app launches.
+///
+/// `HSplitView` doesn't expose `autosaveName` in SwiftUI — but it's just a wrapper around
+/// `NSSplitView`. This zero-size NSViewRepresentable embeds itself behind the split view,
+/// walks up the AppKit hierarchy to find the enclosing NSSplitView, and sets its
+/// `autosaveName`. AppKit handles persistence to UserDefaults automatically after that.
+private struct SplitViewAutosave: NSViewRepresentable {
+    let name: String
+
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async { [weak v] in
+            guard let v else { return }
+            // Walk up until we hit the enclosing NSSplitView.
+            var node: NSView? = v
+            while let n = node, !(n is NSSplitView) { node = n.superview }
+            (node as? NSSplitView)?.autosaveName = NSSplitView.AutosaveName(name)
+        }
+        return v
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 // MARK: - Off-main GIF encoding
