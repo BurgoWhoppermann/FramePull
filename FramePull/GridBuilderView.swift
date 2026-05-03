@@ -319,33 +319,34 @@ struct GridBuilderView: View {
 
     @ViewBuilder
     private func sourceCardContent(source: GridCellSource, id: UUID, isInGrid: Bool, isFull: Bool) -> some View {
-        // Outer frame locks every cell to its column width × 80pt so .aspectRatio(.fill) on the
-        // inner image can't propagate an intrinsic width up to LazyVGrid (which caused selected
-        // cards to render slightly larger than their column and visually overlap their neighbours).
+        // Layout anchor: a plain Rectangle with the cell's frame. Unlike Image+aspectRatio(.fill),
+        // a Rectangle has NO intrinsic size preference, so it doesn't propagate a width up to
+        // LazyVGrid based on the source image's aspect (which made some selected cells render
+        // wider than others when their thumbnail aspects differed). The image is drawn as an
+        // overlay on top, clipped to the rounded rect.
         ZStack(alignment: .topTrailing) {
-            Group {
-                if let gifURL = clipGIFURL(for: source) {
-                    // PassthroughImageView ensures clicks/drags reach the parent Button.
-                    AnimatedGIFView(url: gifURL)
-                } else if let img = thumbnails[id] {
-                    Image(nsImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    RoundedRectangle(cornerRadius: 4).fill(Color.gray.opacity(0.18))
+            Rectangle()
+                .fill(Color.black)
+                .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 80)
+                .overlay {
+                    if let gifURL = clipGIFURL(for: source) {
+                        AnimatedGIFView(url: gifURL)
+                    } else if let img = thumbnails[id] {
+                        Image(nsImage: img)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Color.gray.opacity(0.18)
+                    }
                 }
-            }
-            .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 80)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .overlay(
-                // .strokeBorder strokes ENTIRELY inside the path (vs .stroke which straddles).
-                // Combined with the outer .frame(maxWidth: .infinity), selection borders no
-                // longer extend past cell bounds into adjacent cards.
-                RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(isInGrid ? Color.framePullAmber : .clear, lineWidth: 2)
-            )
-            .opacity(isFull ? 0.35 : 1)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(
+                    // .strokeBorder strokes entirely inside the path so the selection ring stays
+                    // within the cell — no bleed into neighbours.
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(isInGrid ? Color.framePullAmber : .clear, lineWidth: 2)
+                )
+                .opacity(isFull ? 0.35 : 1)
 
             if isInGrid {
                 Image(systemName: "checkmark.circle.fill")
