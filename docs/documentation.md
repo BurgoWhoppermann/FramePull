@@ -20,6 +20,7 @@
    - [Export](#73-export)
 8. [Keyboard Shortcuts](#8-keyboard-shortcuts)
 9. [Tips & Workflows](#9-tips--workflows)
+10. [iPhone & iPad](#10-iphone--ipad)
 
 ---
 
@@ -382,3 +383,72 @@ Drag the splitter between the source pane and the preview canvas to make either 
 
 **Zoom on the playhead**
 In the timeline, the zoom slider anchors on the playhead's current screen position — content under your cursor stays put as you zoom in. If you've scrolled away from the playhead, zoom anchors on the visible window's centre instead (no jumpy snap-back).
+
+---
+
+## 10. iPhone & iPad
+
+FramePull on iPhone and iPad uses the same cut detection, marking rules and export engine as the Mac — a still or clip marked on a phone lands on exactly the same frame it would on desktop. It's one purchase across all three.
+
+### 10.1 Opening a video
+
+- **Choose from Photos** — where phone footage lives.
+- **Browse Files** — for footage synced from a Mac, iCloud Drive or an external drive.
+- **Recent** — the last three videos, one tap to reopen.
+
+FramePull keeps its own copy of each video you open, so recents reopen instantly. Those copies are capped at 3 GB in total — the oldest are dropped automatically — and opening the same video again replaces its old copy rather than adding another. The import screen shows how much space the copies use, with a **Clear** button to take it back.
+
+### 10.2 Cut detection
+
+Detection starts as soon as a video opens; the progress bar has a **Stop** button. The **scissors** menu (top right) runs detection again, clears the results, and sets the sensitivity: **Fewer cuts**, **Balanced** (default) or **More cuts**.
+
+### 10.3 Marking
+
+Scrub the timeline, then tap **IN** and **OUT** to mark a clip — either order works — or **STILL** to mark a frame. Markers snap to a cut when you're within 3 frames of it, as on the Mac; turn **Snap** off to place them exactly where the playhead is. **Undo** (↩, top right) steps back through every marker change.
+
+- **Pinch** the timeline to zoom; drag to scrub. While you drag, FramePull shows a quick preview of the frame and settles on the exact one when you let go.
+- **Swipe down** on the video, or **double-tap** it, for the **full-screen player**: timeline, transport and IN / OUT / STILL, with everything else out of the way. Controls fade after a few seconds; tap to bring them back. Swipe down, double-tap or tap ⤡ to leave.
+- In the marked list, **tap** an item to jump to it, **double-tap a clip to play it on a loop**, and swipe left to delete. **Clear** removes a whole section (undoable).
+
+On iPhone in landscape the controls move to a rail beside the video. On iPad they sit in a sidebar next to the player.
+
+**Hardware keyboard** (Magic Keyboard or any Bluetooth keyboard):
+
+| Key | Action |
+|---|---|
+| `I` | Set IN point |
+| `O` | Set OUT point |
+| `S` | Mark still |
+| `Space` | Play / Pause |
+| `←` / `→` | Step one frame |
+
+### 10.4 Auto-generate
+
+**Auto-generate from N cuts** fills the timeline from the detected cuts: one still in the middle of each scene, and clips spanning 1–4 scenes each (a 3-scene clip contains 2 cuts). Running it again replaces the previous auto markers; ones you placed by hand are kept.
+
+### 10.5 Review
+
+**Review** shows every marker as a card. **Swipe right** (or ✓) to keep, **swipe left** (or ✕) to delete. **Skip review · Keep all** keeps the rest. Deleted markers come back with Undo on the timeline.
+
+### 10.6 Grids
+
+**Grids** opens the composer full screen.
+
+- Pick a **layout** (1×1 to 3×2) and **ratio** (1:1, 4:5, 9:16, 16:9) from the chips at the top.
+- **Tap a frame** in the strip at the bottom to drop it into the next empty cell; tap it again to take it out.
+- **Drag** inside a cell to reframe it, **pinch** to zoom.
+- **Tap a cell** for its zoom slider, **Reset crop**, **Loop ×N** (clip cells) and **Remove**.
+- **Hold a cell** and drag it onto another to swap the two.
+- **Auto Fill** fills the empty cells; on a full grid it becomes **Re-roll**, which shuffles in a new selection.
+- **+** adds another grid; long-press a grid's tab to delete it.
+
+### 10.7 Export
+
+Choose where the results go:
+
+- **Photos Library** — saved into an album named `FramePull_<video name>`; exporting the same video again adds to that album. FramePull asks for photo library access the first time, because finding the album again on the next export means reading the library. If you'd rather not grant that, choose *Don't Allow* and then allow adding photos: everything is still saved, just without the album.
+- **Files…** — pick any folder. You get the same `FramePull_<video name>/` layout as on the Mac (`stills/`, `gifs/`, `videos/`, `grids/`), and exporting the same video again continues the numbering instead of overwriting.
+
+Options mirror the Mac: still format and size, clip quality and mute, GIFs, 4:5 and 9:16 crops, and grids. The screen stays awake while an export runs. **Cancel** stops after the item in progress.
+
+**Not on iPhone and iPad yet:** LUTs and *Prefer faces* still placement are Mac-only.

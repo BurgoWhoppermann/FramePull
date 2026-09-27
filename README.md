@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="FramePull/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="128" alt="FramePull icon" />
+  <img src=".github/icon.png" width="128" alt="FramePull icon" />
 </p>
 
 <h1 align="center">FramePull</h1>
@@ -32,7 +32,7 @@ Drop a video file into FramePull and it automatically detects every scene cut �
 
 Full user guide: **[docs/documentation.md](docs/documentation.md)**
 
-Topics: cut detection · manual & auto marking · timeline · LUT grading · Process workflow (Review · Grids · Export) · keyboard shortcuts · workflows
+Topics: cut detection · manual & auto marking · timeline · LUT grading · Process workflow (Review · Grids · Export) · keyboard shortcuts · workflows · iPhone & iPad
 
 ## Scene detection — frame-precise
 
